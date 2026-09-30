@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qualk - quantum world-graph explorer</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <h1>qualk <span class="sub">quantum walk over a world graph</span></h1>
+  <span id="sim-banner" class="banner" hidden>SIMULATED sources - synthetic pages and extraction, not real results</span>
+  <span class="grow"></span>
+  <span id="pills" class="pills"></span>
+  <span id="conn" class="conn" title="live connection"><i></i><span>connecting</span></span>
+  <button id="btn-settings" class="ghost">Settings</button>
+  <button id="btn-logout" class="ghost" hidden>Log out</button>
+</header>
+
+<div class="app">
+  <aside class="runs card">
+    <div class="runs-head">
+      <h2>Runs</h2>
+      <button id="btn-new" class="primary">New run</button>
+    </div>
+    <div id="run-list" class="run-list"></div>
+  </aside>
+
+  <section class="stage">
+    <div id="dock" class="dock card">
+      <div class="dock-main">
+        <div class="dock-title"><b id="dock-name">No run selected</b> <span id="dock-state" class="chip">-</span></div>
+        <div class="dock-btns">
+          <button id="c-resume" title="Run on until the total is reached">Resume</button>
+          <button id="c-pause" title="Pause after the current round">Pause</button>
+          <button id="c-step" title="Run exactly one round">Step</button>
+          <button id="c-stop" class="danger" title="Stop after the current round">Stop</button>
+          <button id="c-delete" class="danger" title="Delete this run">Delete run</button>
+          <span id="c-continue-box" hidden>
+            <input id="c-continue-n" type="number" min="1" value="10" aria-label="Rounds to add">
+            <button id="c-continue" class="primary">Continue</button>
+          </span>
+        </div>
+      </div>
+      <div class="progress"><div id="progress-bar"></div></div>
+      <div id="dock-note" class="muted small"></div>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab on" data-tab="graph" role="tab">Graph</button>
+      <button class="tab" data-tab="compare" role="tab" id="tab-compare" hidden>Compare</button>
+      <button class="tab" data-tab="threads" role="tab" id="tab-threads">Questions</button>
+      <button class="tab" data-tab="log" role="tab">Log</button>
+    </div>
+
+    <div id="view-graph" class="view">
+      <div class="card graph-card"><svg id="graph" role="img" aria-label="World graph"></svg><div id="graph-empty" class="empty">Select a run, or start a new one.</div></div>
+    </div>
+    <div id="view-compare" class="view" hidden>
+      <div class="cmp-graphs">
+        <div class="card"><div class="cmp-title" id="cmp-title-a">quantum</div><svg id="graph-a"></svg></div>
+        <div class="card"><div class="cmp-title" id="cmp-title-b">diffusion control</div><svg id="graph-b"></svg></div>
+      </div>
+      <div class="cmp-stats" id="cmp-stats"></div>
+      <div class="charts">
+        <div class="card chart" id="ch-nodes"></div><div class="card chart" id="ch-rel"></div>
+        <div class="card chart" id="ch-nov"></div><div class="card chart" id="ch-overlap"></div>
+        <div class="card chart" id="ch-answered"></div><div class="card chart" id="ch-open"></div>
+      </div>
+    </div>
+    <div id="view-threads" class="view" hidden>
+      <div class="card th-page">
+        <div id="th-kpis" class="th-kpis"></div>
+        <details class="howq"><summary>How questions are processed</summary>
+          <ol>
+            <li><b>Raised</b>: while reading a page, the extractor may record something the page leaves unanswered as a question, tied to concepts on that page. A question with nothing concrete behind it is dropped; a near-duplicate of an open one is merged into it.</li>
+            <li><b>Checked</b>: every later page is compared against up to five open questions (the one the probe was aimed at first, then the nearest).</li>
+            <li><b>Advanced or answered</b>: a separate LLM pass says whether the page bears on a question (advanced) or settles it (answered). The page shows up in the question's evidence trail. It can never raise a question.</li>
+            <li><b>Aimed</b>: some probes start from a question's own concepts (the &ldquo;aim at questions&rdquo; setting), and the walk then chooses where to go next.</li>
+            <li><b>Let go</b>: a question nothing touches loses pressure and goes dormant; the pool is capped.</li>
+          </ol></details>
+        <div id="ch-threads" class="chart th-chart"></div>
+        <h2>Activity</h2>
+        <div id="th-activity" class="th-activity"></div>
+        <h2>All questions</h2>
+        <div id="th-list" class="th-list"></div>
+      </div>
+    </div>
+    <div id="view-log" class="view" hidden><div class="card log" id="log"></div></div>
+
+    <div class="timeline">
+      <button id="play">Play</button>
+      <input id="slider" type="range" min="0" max="0" value="0" aria-label="Round">
+      <span id="rlabel" class="muted">round 0 / 0</span>
+      <label class="follow"><input id="follow" type="checkbox" checked> follow live</label>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="card inspector" id="side"></div>
+    <div class="card qpanel" id="qpanel" hidden></div>
+    <div class="card steer" id="steer" hidden>
+      <h2>Steer</h2>
+      <p class="muted small">Takes effect at the next round boundary.</p>
+      <details open>
+        <summary>Live parameters</summary>
+        <form id="params-form" class="grid2">
+          <label>walk <select name="walk"><option>quantum</option><option>diffusion</option><option>classical</option></select></label>
+          <label>backend <select name="backend"><option>qiskit</option><option>atlas</option></select></label>
+          <label>nodes (qubits) <input name="nodes" type="number" min="2" max="24"></label>
+          <label>steps <input name="steps" type="number" min="1" max="20"></label>
+          <label>time t <input name="time" type="number" step="0.1" min="0.1"></label>
+          <label>shots <input name="shots" type="number" min="1" max="65536"></label>
+          <label>explore <input name="explore" type="number" step="0.05" min="0" max="1"></label>
+          <label>total rounds <input name="rounds" type="number" min="1"></label>
+          <label>aim at questions <input name="thread_aim" type="number" step="0.05" min="0" max="1"></label>
+          <label title="Skip a fetched page closer than this to a page already read (distance = 1 - cosine). 0 = off.">skip near-duplicates <input name="dedupe" type="number" step="0.01" min="0" max="0.5"></label>
+          <button type="submit" class="primary wide">Apply at next round</button>
+        </form>
+      </details>
+      <details open>
+        <summary>Ask a question</summary>
+        <form id="ask-form">
+          <input id="ask-q" placeholder="a question for this run to work on" maxlength="300" autocomplete="off">
+          <input id="ask-involves" list="pin-list" placeholder="concepts it rests on (comma-separated, optional)" autocomplete="off">
+          <label class="check"><input id="ask-focus" type="checkbox" checked> aim the next probes at it</label>
+          <button type="submit">Ask</button>
+        </form>
+      </details>
+      <details open>
+        <summary>Pin the next seed</summary>
+        <div class="row">
+          <input id="pin-input" list="pin-list" placeholder="concept name (or click a node)" autocomplete="off">
+          <datalist id="pin-list"></datalist>
+          <button id="pin-go">Pin</button>
+        </div>
+        <div id="pin-note" class="muted small"></div>
+      </details>
+      <details open>
+        <summary>Inject an observation</summary>
+        <input id="inject-url" placeholder="https://public-page-to-read">
+        <textarea id="inject-text" rows="3" placeholder="...or paste text"></textarea>
+        <button id="inject-go">Inject as next round</button>
+      </details>
+    </div>
+  </aside>
+</div>
+
+<dialog id="dlg-new">
+  <form id="new-form" method="dialog" class="dlg">
+    <h2>New run</h2>
+    <label>Topic (searched to seed the graph) <input name="topic" maxlength="500" placeholder="e.g. Voynich manuscript"></label>
+    <label>Seed text (optional) <textarea name="seed" rows="3" maxlength="20000" placeholder="paste a passage to start from"></textarea></label>
+    <div class="grid2">
+      <label>Rounds <input name="rounds" type="number" min="1" value="10"></label>
+      <label>Walk
+        <select name="walk"><option value="quantum">quantum</option><option value="diffusion">diffusion (control)</option><option value="classical">classical (no walk)</option></select>
+      </label>
+    </div>
+    <label class="check"><input name="paired" type="checkbox"> Also run the diffusion control from the same seed (paired, in lockstep)</label>
+    <label class="check"><input name="start_paused" type="checkbox"> Start paused (step round by round)</label>
+    <label class="check"><input name="threads" type="checkbox" checked> Track open questions (threads): raise, advance, answer, and aim probes at them</label>
+    <details>
+      <summary>Walk parameters</summary>
+      <div class="grid2">
+        <label>nodes (qubits) <input name="nodes" type="number" min="2" max="24" value="12"></label>
+        <label>steps <input name="steps" type="number" min="1" max="20" value="8"></label>
+        <label>time t <input name="time" type="number" step="0.1" min="0.1" value="3"></label>
+        <label>shots <input name="shots" type="number" min="1" max="65536" value="1024"></label>
+        <label>backend <select name="backend"><option value="qiskit">local Qiskit</option><option value="atlas">Moth Atlas</option></select></label>
+        <label>explore <input name="explore" type="number" step="0.05" min="0" max="1" value="0.4"></label>
+        <label>random seed <input name="rng" type="number" value="0"></label>
+        <label>aim at questions <input name="thread_aim" type="number" step="0.05" min="0" max="1" value="0.3"></label>
+        <label title="Skip a fetched page closer than this to a page already read (distance = 1 - cosine). 0 = off. About 0.1 catches copies, mirrors and close paraphrases.">skip near-duplicates <input name="dedupe" type="number" step="0.01" min="0" max="0.5" value="0.10"></label>
+        <label>run name (optional) <input name="name" maxlength="64" placeholder="auto"></label>
+      </div>
+    </details>
+    <div id="new-error" class="error" hidden></div>
+    <div class="dlg-btns"><button type="button" id="new-cancel">Cancel</button><button type="submit" class="primary" id="new-go">Start</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-delete">
+  <form id="delete-form" method="dialog" class="dlg">
+    <h2>Delete run</h2>
+    <p id="delete-text"></p>
+    <p class="muted small">This removes the graph, the round log, the embeddings and the saved circuits of the run. It cannot be undone.</p>
+    <div id="delete-error" class="error" hidden></div>
+    <div class="dlg-btns"><button type="button" id="delete-cancel">Cancel</button><button type="submit" class="danger" id="delete-go">Delete</button></div>
+  </form>
+</dialog>
+
+<dialog id="dlg-settings">
+  <form id="settings-form" method="dialog" class="dlg wide-dlg">
+    <h2>Settings</h2>
+    <p class="muted small">Stored in the server's <code>.env</code>. Secret values are write-only: a set key shows only a badge, and a blank field keeps it unchanged. Changes are blocked while a run is active.</p>
+    <div id="settings-fields"></div>
+    <div class="row tests" id="settings-tests">
+      <button type="button" data-test="search">Test search</button>
+      <button type="button" data-test="llm">Test LLM</button>
+      <button type="button" data-test="embed">Test embedder</button>
+      <button type="button" data-test="atlas">Test Atlas</button>
+    </div>
+    <div id="settings-msg" class="muted small"></div>
+    <div class="dlg-btns"><button type="button" id="settings-close">Close</button><button type="submit" class="primary" id="settings-save">Save</button></div>
+  </form>
+</dialog>
+
+<div id="login" class="login" hidden>
+  <form id="login-form" class="card dlg">
+    <h2>Access token</h2>
+    <p class="muted small">This server requires a token (printed in the terminal that started it).</p>
+    <input id="login-token" type="password" autocomplete="current-password" placeholder="token" required>
+    <div id="login-error" class="error" hidden></div>
+    <button type="submit" class="primary">Enter</button>
+  </form>
+</div>
+
+<script src="/static/vendor/d3.min.js"></script>
+<script src="/static/graph.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qualk - quantum walk over a world graph</title>
+<style>
+:root {
+  --bg: #f6f5f1; --panel: #ffffff; --ink: #1c1d21; --muted: #6b6f7a; --line: #d9d7cf;
+  --q: #5b3fd4; --c: #d9822b; --hit: #0f9d76; --hostile: #c8372d; --scaffold: #b9b6ab;
+  --node: #8a8fa0; --new: #0f9d76;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14151a; --panel: #1d1f27; --ink: #ecebe6; --muted: #9a9eab; --line: #33353f;
+    --q: #9b86ff; --c: #f0a24e; --hit: #3ed6a6; --hostile: #ff6b5e; --scaffold: #4a4c58;
+    --node: #7c8296; --new: #3ed6a6;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14151a; --panel: #1d1f27; --ink: #ecebe6; --muted: #9a9eab; --line: #33353f;
+  --q: #9b86ff; --c: #f0a24e; --hit: #3ed6a6; --hostile: #ff6b5e; --scaffold: #4a4c58;
+  --node: #7c8296; --new: #3ed6a6;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 14px 16px 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+header .sub { color: var(--muted); }
+.strip { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 4px 16px 10px; color: var(--muted); }
+.strip b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr); gap: 12px; padding: 0 16px 12px; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+#graph { width: 100%; height: 62vh; min-height: 340px; display: block; }
+.side { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; max-height: calc(62vh + 90px); overflow: auto; }
+.side h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+.q { font-size: 13px; color: var(--muted); word-break: break-word; }
+.route { font-size: 15px; }
+.route .seed { color: var(--q); font-weight: 600; }
+.route .target { color: var(--hit); font-weight: 600; }
+.bars { display: grid; grid-template-columns: minmax(70px, 34%) 1fr; gap: 3px 8px; align-items: center; font-size: 12px; }
+.bars .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bars .lbl.t { color: var(--hit); font-weight: 600; }
+.bars .pair { display: flex; flex-direction: column; gap: 2px; }
+.bar { height: 6px; border-radius: 3px; min-width: 1px; }
+.bar.q { background: var(--q); } .bar.c { background: var(--c); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.kv { display: flex; flex-wrap: wrap; gap: 2px 16px; font-size: 12px; color: var(--muted); }
+.kv b { color: var(--ink); font-weight: 600; }
+.added { font-size: 12px; } .added span { color: var(--new); }
+.muted { color: var(--muted); }
+footer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 4px 16px 18px; }
+input[type=range] { flex: 1 1 260px; accent-color: var(--q); }
+button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 14px; font: inherit; cursor: pointer; }
+button:hover { border-color: var(--q); }
+.spark { display: block; }
+text.nl { font-size: 10.5px; fill: var(--ink); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; pointer-events: none; }
+
+text.el { font-size: 10px; font-weight: 600; fill: var(--ink); paint-order: stroke; stroke: var(--panel); stroke-width: 3.5px; pointer-events: none; }
+.nodecard { display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.nc-name { font-size: 16px; font-weight: 650; word-break: break-word; }
+.links { display: flex; flex-direction: column; gap: 3px; max-height: 26vh; overflow: auto; font-size: 12.5px; }
+.link .pred { color: var(--muted); font-weight: 600; } .link .pred.hostile { color: var(--hostile); }
+.link.scaffold { opacity: .7; }
+.nc-btns { display: flex; gap: 6px; }
+
+.thl { font-size: 11px; font-weight: 700; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; pointer-events: none; }
+.thread { border: 1px solid var(--line); border-left: 4px solid var(--tc, var(--q)); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 5px; background: var(--bg); }
+.thread.sel { border-color: var(--tc); box-shadow: 0 0 0 1px var(--tc); }
+.thread.resolved, .thread.closed, .thread.dormant, .thread.capped { opacity: .82; }
+.th-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; } .th-head b { font-size: 13.5px; }
+.tchip { font-size: 11px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.tchip.open { color: var(--q); border-color: var(--q); } .tchip.advancing { color: var(--c); border-color: var(--c); }
+.tchip.resolved { color: var(--ok); border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.th-meta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+.pbar { display: inline-block; width: 60px; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; } .pbar i { display: block; height: 100%; background: var(--tc, var(--q)); }
+.focusing { color: var(--q); font-weight: 700; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chipc { font-size: 11.5px; padding: 0 8px; border-radius: 999px; background: color-mix(in srgb, var(--tc, var(--q)) 14%, transparent); color: var(--ink); text-decoration: none; }
+.trail { border-top: 1px dashed var(--line); padding-top: 4px; display: flex; flex-direction: column; gap: 2px; font-size: 12px; } .trail .rn { color: var(--muted); font-variant-numeric: tabular-nums; }
+.th-btns { display: flex; gap: 6px; flex-wrap: wrap; } .th-btns button { padding: 2px 10px; font-size: 12px; }
+.tevents { border-top: 1px solid var(--line); padding-top: 8px; } .tev { font-size: 12.5px; margin: 2px 0; }
+.tev.opened b { color: var(--q); } .tev.advanced b { color: var(--c); } .tev.resolved b { color: var(--ok); }
+.th-list { display: flex; flex-direction: column; gap: 8px; }
+
+.fitbtn { position: absolute; right: 10px; top: 10px; padding: 2px 10px; font-size: 12px; opacity: .85; }
+.graph-card, .cmp-graphs .card { position: relative; }
+.card{position:relative}
+
+.rp-title { font-size: 17px; margin: 0; font-weight: 650; } .rp-title span { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.rp-sum { font-size: 12.5px; color: var(--muted); margin-top: -6px; }
+.step { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.step h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); margin: 0; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.step h3 i { font-style: normal; width: 18px; height: 18px; border-radius: 50%; background: var(--q); color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.why { font-size: 13px; } .how { font-size: 12.5px; color: var(--muted); }
+.cap { font-size: 12px; color: var(--muted); margin: 4px 0; line-height: 1.45; }
+.walkbox summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.bars { grid-template-columns: minmax(70px, 30%) 1fr auto !important; }
+.nums { display: flex; gap: 6px; font-size: 11px; font-variant-numeric: tabular-nums; } .nums .nq { color: var(--q); } .nums .nc { color: var(--c); }
+.nov { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.nbar { display: inline-block; width: 90px; height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; } .nbar i { display: block; height: 100%; background: var(--new); }
+.oq { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; padding: 3px 6px; border-left: 3px solid var(--tc, var(--q)); background: var(--bg); border-radius: 4px; margin: 3px 0; cursor: pointer; }
+.oq:hover { background: color-mix(in srgb, var(--tc, var(--q)) 10%, var(--bg)); }
+.linkbtn { border: none; background: none; color: var(--q); padding: 2px 0; text-align: left; }
+.act { font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid var(--line); } .act .rn { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.act.opened b { color: var(--q); } .act.advanced b { color: var(--c); } .act.resolved b { color: var(--ok); }
+.howq { font-size: 12.5px; color: var(--muted); } .howq ol { margin: 6px 0 0 18px; padding: 0; } .howq li { margin: 2px 0; }
+.th-activity { max-height: 240px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; background: var(--bg); }
+
+.skipped { font-size: 12px; color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>qualk <span class="sub">- a quantum walk chooses where the explorer looks next</span></h1>
+  <span class="sub" id="runname"></span>
+</header>
+<div class="strip" id="strip"></div>
+<main>
+  <div class="card"><svg id="graph" role="img" aria-label="World graph growing round by round"></svg></div>
+  <div class="card side" id="side"></div>
+</main>
+<div class="card" id="threads" hidden style="margin:0 16px 12px;padding:12px 14px"></div>
+<footer>
+  <button id="play">Play</button>
+  <input id="slider" type="range" min="0" max="0" value="0" aria-label="Round">
+  <span id="rlabel" class="muted"></span>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>/*__GRAPH_JS__*/</script>
+<script>
+const DATA = __DATA__;
+const {GraphView, nodeCardHTML, roundPanelHTML, threadInfo, threadCardsHTML, threadActivityHTML, esc} = window.QualkGraph;
+const rounds = DATA.rounds;
+const maxRound = Math.max(0, ...rounds.map(r => r.round));
+const byRound = {};
+rounds.forEach(r => { if (r.kind !== 'seed') byRound[r.round] = r; });
+const seeds = rounds.filter(r => r.kind === 'seed');
+const nodeName = Object.fromEntries(DATA.nodes.map(n => [n.id, n.name]));
+document.getElementById('runname').textContent = DATA.title;
+
+(function () {
+  const walks = rounds.filter(r => r.probe && r.probe.walk && r.probe.walk.total_variation_distance != null);
+  const tvd = walks.length ? walks.reduce((s, r) => s + r.probe.walk.total_variation_distance, 0) / walks.length : null;
+  const methods = [...new Set(walks.map(r => r.probe.walk.method))].join(', ') || '-';
+  const rel = DATA.edges.filter(e => e.role === 'relation' && e.until == null).length;
+  document.getElementById('strip').innerHTML =
+    `<span>rounds <b>${maxRound}</b></span><span>concepts <b>${DATA.nodes.length}</b></span>` +
+    `<span>relations <b>${rel}</b> of ${DATA.edges.length} edges</span>` +
+    `<span>walks run <b>${walks.length}</b> (${esc(methods)})</span>` +
+    `<span>mean quantum-vs-diffusion TVD <b>${tvd == null ? '-' : tvd.toFixed(3)}</b></span>`;
+})();
+
+let selected = null, threadSel = null;
+const select = id => { selected = id; if (id) threadSel = null; show(+slider.value); };
+const view = new GraphView(document.getElementById('graph'), {
+  onNodeClick: n => select(selected === n.id ? null : n.id), onBackgroundClick: () => { threadSel = null; select(null); }});
+const nodeById = Object.fromEntries(DATA.nodes.map(n => [n.id, n]));
+const slider = document.getElementById('slider'), playBtn = document.getElementById('play');
+slider.max = maxRound;
+let timer = null;
+function show(r) {
+  slider.value = r;
+  document.getElementById('rlabel').textContent = `round ${r} / ${maxRound}`;
+  const rec = byRound[r];
+  const info = threadInfo(rounds, r);
+  view.render(DATA.nodes, DATA.edges, r, rec || seeds[0], selected,
+              info ? {threads: info.table, threadSel: threadSel, focus: info.focus, aimed: rec && rec.probe && rec.probe.thread} : {});
+  const box = document.getElementById('threads');
+  box.hidden = !info;
+  if (info) {
+    const tt = info.totals;
+    box.innerHTML = `<h2>Questions</h2><div class="strip" style="padding:0 0 8px"><span>answered <b>${tt.answered}</b> of <b>${tt.opened}</b> raised</span>` +
+      `<span>open now <b>${tt.open}</b></span><span>probes aimed at a question <b>${info.aimed}</b> of ${info.probes}</span></div>` +
+      `<h2>Activity</h2><div class="th-activity">${threadActivityHTML(info)}</div><h2 style="margin-top:10px">All questions</h2>` +
+      `<div class="th-list">${threadCardsHTML(info, {actions: false, selected: threadSel, names: nodeName})}</div>`;
+  }
+  const card = selected && nodeById[selected] ? nodeCardHTML(nodeById[selected], DATA.edges, nodeName, r) : '';
+  document.getElementById('side').innerHTML = card + roundPanelHTML(r === 0 ? null : rec, nodeName, seeds) +
+    (r === 0 ? '<div class="muted">Press play, or drag the slider: each round the walk picks a concept, the web is searched for it, and what is read is added to the graph.</div>' : '');
+}
+slider.addEventListener('input', () => { stop(); show(+slider.value); });
+function stop() { if (timer) { clearInterval(timer); timer = null; } playBtn.textContent = 'Play'; }
+playBtn.addEventListener('click', () => {
+  if (timer) return stop();
+  if (+slider.value >= maxRound) slider.value = 0;
+  playBtn.textContent = 'Pause';
+  timer = setInterval(() => { const n = +slider.value + 1; if (n > maxRound) return stop(); show(n); }, 1400);
+});
+document.getElementById('side').addEventListener('click', e => {
+  const link = e.target.closest('a[data-node]');
+  if (link) { e.preventDefault(); select(link.dataset.node); }
+  else if (e.target.closest('button[data-act=clear]')) select(null);
+});
+document.getElementById('threads').addEventListener('click', e => {
+  const chip = e.target.closest('a[data-node]');
+  if (chip) { e.preventDefault(); return select(chip.dataset.node); }
+  const btn = e.target.closest('button[data-thread-act=show]'), card = e.target.closest('[data-thread]');
+  if (btn && card) { threadSel = threadSel === card.dataset.thread ? null : card.dataset.thread; selected = null; show(+slider.value); }
+});
+addEventListener('keydown', e => { if (e.key === 'Escape' && selected) select(null); });
+addEventListener('resize', () => show(+slider.value));
+show(0);
+</script>
+</body>
+</html>
