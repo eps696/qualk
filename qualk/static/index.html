@@ -119,6 +119,7 @@
           <label title="Skip a fetched page closer than this to a page already read (distance = 1 - cosine). 0 = off.">skip near-duplicates <input name="dedupe" type="number" step="0.01" min="0" max="0.5"></label>
           <button type="submit" class="primary wide">Apply at next round</button>
         </form>
+        <div id="params-note" class="muted small"></div>
       </details>
       <details open>
         <summary>Ask a question</summary>
@@ -198,7 +199,6 @@
   <form id="settings-form" method="dialog" class="dlg wide-dlg">
     <h2>Settings</h2>
     <p class="muted small">Stored in the server's <code>.env</code>. Secret values are write-only: a set key shows only a badge, and a blank field keeps it unchanged. Changes are blocked while a run is active.</p>
-    <div id="settings-fields"></div>
     <div class="row tests" id="settings-tests">
       <button type="button" data-test="search">Test search</button>
       <button type="button" data-test="llm">Test LLM</button>
@@ -207,9 +207,12 @@
       <button type="button" data-test="qpu">Test QPU</button>
     </div>
     <div id="settings-msg" class="muted small"></div>
+    <div id="settings-fields"></div>
     <div class="dlg-btns"><button type="button" id="settings-close">Close</button><button type="submit" class="primary" id="settings-save">Save</button></div>
   </form>
 </dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
 <div id="login" class="login" hidden>
   <form id="login-form" class="card dlg">

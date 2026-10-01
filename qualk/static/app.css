@@ -127,6 +127,9 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .field .badge { font-size: 11px; color: var(--ok); border: 1px solid var(--ok); border-radius: 999px; padding: 0 8px; }
 .field .badge.no { color: var(--muted); border-color: var(--line); }
 .tests { flex-wrap: wrap; }
+.field-group { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50; max-width: min(560px, 92vw); padding: 9px 14px; border-radius: 10px; background: var(--ink); color: var(--panel); font-size: 13px; box-shadow: 0 6px 24px rgba(0,0,0,.3); }
+.toast.bad { background: var(--hostile); color: #fff; }
 .test-res.ok { color: var(--ok); } .test-res.bad { color: var(--hostile); }
 .login { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 10; padding: 16px; }
 .login form { width: min(380px, 100%); }

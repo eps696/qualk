@@ -9,6 +9,7 @@
   const S = {
     simulate: false, providers: {}, limits: {max_rounds: 200}, authRequired: false,
     status: {},            // run id -> latest status event
+    pending: {},           // run id -> live parameter changes queued but not yet applied
     runs: [],              // /api/runs listing
     current: null, models: {}, tab: 'graph', round: 0, follow: true, selected: null, threadSel: null,
     trailMode: 'last',
@@ -54,7 +55,12 @@
     if (!res.ok) throw new Error(data.detail || res.statusText);
     return data;
   }
-  function toast(text, bad) { addLog({kind: bad ? 'error' : 'log', text}); if (bad) $('dock-note').textContent = text; }
+  let toastTimer = null;
+  function toast(text, bad) {
+    addLog({kind: bad ? 'error' : 'log', text}); if (bad) $('dock-note').textContent = text;
+    const el = $('toast'); el.textContent = text; el.className = 'toast' + (bad ? ' bad' : ''); el.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, bad ? 7000 : 4000);
+  }
 
   /* ---- live connection ------------------------------------------------------------------------ */
   let ws = null, retry = 1500;
@@ -91,7 +97,14 @@
     } else if (m.type === 'threads') {
       const model = S.models[m.run];
       if (model) { model.override = {round: m.round, table: m.table, focus: m.focus}; draw(); }
-    } else if (m.type === 'log' || m.type === 'error' || m.type === 'steer') { addLog(m); if (m.type === 'steer') draw(); }
+    } else if (m.type === 'log' || m.type === 'error' || m.type === 'steer') {
+      addLog(m);
+      if (m.type === 'error' && /rejected:/.test(m.text || '')) {      // a steering change the run refused: say so, drop the queued value
+        if (m.run) delete S.pending[m.run];
+        toast(`${m.run ? '[' + m.run + '] ' : ''}${m.text}`, true);
+      }
+      if (m.type === 'steer' || m.type === 'error') draw();
+    }
   }
   function addLog(m) {
     const t = m.t ? new Date(m.t * 1000) : new Date();
@@ -262,10 +275,12 @@
     const show = !!id && ACTIVE.includes(st) && !!live;
     $('steer').hidden = !show;
     if (!show) return;
-    const form = $('params-form');
-    if (!form.contains(document.activeElement)) {
-      Object.entries(live.cfg).forEach(([k, v]) => { const f = form.elements[k]; if (f) f.value = v; });
+    const form = $('params-form'), pend = S.pending[id] || (S.pending[id] = {});
+    Object.keys(pend).forEach(k => { if (live.cfg[k] === pend[k]) delete pend[k]; });        // applied: the run now has it
+    if (!form.contains(document.activeElement) || !Object.keys(pend).length) {
+      Object.entries(live.cfg).forEach(([k, v]) => { const f = form.elements[k]; if (f) f.value = k in pend ? pend[k] : v; });
     }
+    $('params-note').textContent = Object.keys(pend).length ? 'queued for the next round: ' + Object.entries(pend).map(([k, v]) => `${k} = ${v}`).join(', ') : '';
     form.elements.walk.disabled = live.role === 'ctl' || (partnerId(id) != null);
     [...form.elements.backend.options].forEach(o => o.disabled = (o.value === 'atlas' || o.value === 'qpu') && !S.providers[o.value] && !S.simulate);
     const m = cur();
@@ -374,7 +389,9 @@
   async function openSettings() {
     const d = await api('/api/settings');
     const box = $('settings-fields'); box.innerHTML = '';
+    const GROUPS = {MOTH_API_KEY: 'Moth Atlas', MOTH_ATLAS_PROVIDER: 'Atlas emulator (backend "atlas")', MOTH_QPU_PROVIDER: 'Real QPU (backend "qpu")'};
     Object.entries(d.settings).forEach(([key, s]) => {
+      if (GROUPS[key]) { const h = document.createElement('div'); h.className = 'field-group'; h.textContent = GROUPS[key]; box.appendChild(h); }
       const row = document.createElement('div'); row.className = 'field';
       row.innerHTML = `<label for="set-${key}">${esc(s.label)}</label>` +
         `<input id="set-${key}" data-key="${key}" data-secret="${s.secret}" type="${s.secret ? 'password' : 'text'}" autocomplete="off" ` +
@@ -494,7 +511,13 @@
         if (v !== live.cfg[k]) changes[k] = v;
       });
       if (!Object.keys(changes).length) return toast('No parameter changed.');
-      await steer('params', changes);
+      const r = await steer('params', changes);
+      if (r) {
+        S.pending[S.current] = {...(S.pending[S.current] || {}), ...changes};
+        const paused = liveState(S.current) === 'paused';
+        toast('Queued: ' + Object.entries(changes).map(([k, v]) => `${k} = ${v}`).join(', ') + (paused ? ' (the run is paused: it applies when you resume)' : ' (applies at the next round boundary)'));
+        draw();
+      }
     };
     $('ask-form').onsubmit = async ev => {
       ev.preventDefault();
