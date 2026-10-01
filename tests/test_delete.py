@@ -71,6 +71,7 @@ class DeleteTests(unittest.TestCase):
         self.assertEqual(result['leftover'], {'mixed': ['my-notes.txt', 'quantum']})
         self.assertTrue(os.path.isfile(stray) and os.path.isfile(extra))
         self.assertFalse(os.path.exists(os.path.join(self.path(rid), 'world.json')), 'the run\'s own files are gone')
+        self.assertEqual(self.manager.list_runs(), [], 'a folder with nothing of a run left is not listed as a run')
 
     def test_an_active_run_cannot_be_deleted(self):
         ids = self.manager.create({**BODY, 'name': 'busy', 'rounds': 5, 'start_paused': True})

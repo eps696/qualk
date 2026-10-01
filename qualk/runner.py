@@ -588,6 +588,8 @@ class RunManager:
             path = os.path.join(self.runs_root, name)
             if not RUN_ID.match(name) or not os.path.isdir(path):
                 continue
+            if not any(os.path.exists(os.path.join(path, f)) for f in ('config.json', 'rounds.jsonl', 'world.json')):
+                continue                      # e.g. what is left after a delete kept unrecognised files
             entry: Dict[str, Any] = {'id': name, 'state': 'idle', 'round': 0, 'nodes': 0, 'relations': 0,
                                      'role': 'main', 'paired_with': [], 'cfg': {},
                                      'mtime': os.path.getmtime(path)}

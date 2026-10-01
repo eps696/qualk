@@ -47,6 +47,15 @@ A command-line runner exists too: `python run.py run -o runs/demo --topic "Voyni
    reaches the opposite one with probability 1.00 (diffusion: 0.25); flipping one edge's sign moves the mass
    sideways, which diffusion cannot see (`tests/test_quantum_walk.py`).
 
+**Showing the walk honestly.** A quantum walker has no path: before measurement it is a superposition, and the
+measurement yields only an endpoint, so the UI never draws a line for it. Instead, each round's panel has a
+**wave view** (`evolution.py`): both walks on the same window, with circle size showing the chance of finding the
+walker on each concept as time grows from 0 to `t`, a scrubber with Play, and the chosen partner's probability over
+time for quantum and diffusion. It is the exact ideal evolution, recorded per round (runs made before it existed show
+a note instead). The run's actual path is the **exploration trail** on the graph: one numbered arrow per probe from
+its seed to its partner (colour: fresh, variation, recombination, question-aimed, pinned), switchable between the
+last 8 probes, all, or off; clicking an arrow jumps to its round.
+
 Circuits run on **Moth Atlas** (`MOTH_API_KEY`; falls back to local Qiskit per pick, and stops trying after 3
 failures) or locally. Windows over 16 qubits use an exact closed form (verified equal to the circuit) or Atlas's
 `matrix_product_state`. Every executed circuit is saved as OpenQASM (`quantum/round-XXXXX.qasm`). The round panel

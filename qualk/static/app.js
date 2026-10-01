@@ -11,6 +11,7 @@
     status: {},            // run id -> latest status event
     runs: [],              // /api/runs listing
     current: null, models: {}, tab: 'graph', round: 0, follow: true, selected: null, threadSel: null,
+    trailMode: 'last',
     log: [], connected: false, timer: null,
   };
   let gv = null, gvA = null, gvB = null, viewFor = null, drawQueued = false, runsQueued = 0;
@@ -140,8 +141,21 @@
       const on = S.simulate || S.providers[k];
       return `<span class="pill ${on ? 'ok' : 'off'}" title="${S.simulate ? 'simulated' : (on ? 'configured' : 'not configured')}">${k}</span>`;
     }).join('');
+    if (!cur()) clearViews();
     renderRuns(); renderDock(); renderTabs(); renderTimeline(); renderInspector(); renderQPanel(); renderSteer();
     if (S.tab === 'graph') renderGraph(); else if (S.tab === 'compare') renderCompare(); else if (S.tab === 'threads') renderThreads(); else drawLog();
+  }
+
+  /* No run selected (none yet, or the one on screen was deleted): nothing of it may stay painted. */
+  function clearViews() {
+    ['graph', 'graph-a', 'graph-b'].forEach(id => d3.select('#' + id).selectAll('*').remove());
+    ['ch-nodes', 'ch-rel', 'ch-nov', 'ch-overlap', 'ch-answered', 'ch-open', 'ch-threads'].forEach(id => { $(id).innerHTML = ''; });
+    ['cmp-stats', 'th-kpis', 'th-activity', 'th-list'].forEach(id => { $(id).innerHTML = ''; });
+    $('th-list').innerHTML = '<div class="muted small">Select a run to see its questions.</div>';
+    $('cmp-title-a').textContent = 'quantum'; $('cmp-title-b').textContent = 'diffusion control';
+    gv = gvA = gvB = null; viewFor = null;
+    if (S.tab === 'compare') S.tab = 'graph';          // there is no pair to compare any more
+    if (S.timer) { clearInterval(S.timer); S.timer = null; }      // not stopPlay(): that redraws, and this runs inside render
   }
 
   function renderRuns() {
@@ -180,6 +194,7 @@
     $('tab-threads').textContent = qi ? `Questions (${qi.totals.open} open)` : 'Questions';
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === S.tab));
     ['graph', 'compare', 'threads', 'log'].forEach(v => $('view-' + v).hidden = v !== S.tab);
+    $('trail-label').hidden = !['graph', 'compare'].includes(S.tab);
   }
 
   function renderTimeline() {
@@ -196,7 +211,8 @@
     d3.select('#' + svgId).selectAll('*').remove();
     if (svgId !== 'graph') return new G.GraphView($(svgId));
     return new G.GraphView($(svgId), {onNodeClick: n => selectNode(S.selected === n.id ? null : n.id),
-                                      onBackgroundClick: () => { S.threadSel = null; selectNode(null); }});
+                                      onBackgroundClick: () => { S.threadSel = null; selectNode(null); },
+                                      onTrailClick: r => { S.follow = false; S.round = r; stopPlay(); draw(); }});
   }
 
   function renderGraph() {
@@ -205,8 +221,9 @@
     if (!m) return;
     if (viewFor !== S.current + '|graph') { gv = freshView('graph'); viewFor = S.current + '|graph'; }
     const info = m.threads(S.round), rec = recAt(m, S.round);
-    gv.render(m.nodes, m.edges, S.round, rec, S.selected,
-              info ? {threads: info.table, threadSel: S.threadSel, focus: info.focus, aimed: rec && rec.probe && rec.probe.thread} : {});
+    const extra = info ? {threads: info.table, threadSel: S.threadSel, focus: info.focus, aimed: rec && rec.probe && rec.probe.thread} : {};
+    Object.assign(extra, {trail: G.trailOf(m.rounds, S.round), trailMode: S.trailMode, currentRound: S.round});
+    gv.render(m.nodes, m.edges, S.round, rec, S.selected, extra);
   }
 
   function selectNode(id) {
@@ -226,6 +243,11 @@
     const card = node ? G.nodeCardHTML(node, m.edges, m.names, S.round, {pin: active}) : '';
     $('side').innerHTML = card + G.roundPanelHTML(rec, m.names, m.seeds, {qasmHref: r => `/api/runs/${encodeURIComponent(m.id)}/qasm/${r}`}) +
       (S.round === 0 ? '<div class="muted small">Each round the walk picks a concept, the web is searched for it, and what is read is added to the graph.</div>' : '');
+    const wave = $('side').querySelector('.wave');
+    if (wave && rec && rec.probe) {
+      try { G.mountWave(wave, rec.probe.walk, m.names, m.id + '|' + rec.round); }
+      catch (e) { wave.innerHTML = '<div class="muted small">The wave view failed to draw.</div>'; console.error('wave view', e); }
+    }
   }
 
   /* ---- steering panel ------------------------------------------------------------------------------ */
@@ -266,8 +288,9 @@
     const main = a.id.endsWith('-ctl') ? b : a, ctl = a.id.endsWith('-ctl') ? a : b;
     $('cmp-title-a').textContent = `${main.id}: quantum walk`; $('cmp-title-b').textContent = `${ctl.id}: diffusion control`;
     if (viewFor !== S.current + '|cmp') { gvA = freshView('graph-a'); gvB = freshView('graph-b'); viewFor = S.current + '|cmp'; }
-    gvA.render(main.nodes, main.edges, S.round, recAt(main, S.round));
-    gvB.render(ctl.nodes, ctl.edges, S.round, recAt(ctl, S.round));
+    const trailExtra = m => ({trail: G.trailOf(m.rounds, S.round), trailMode: S.trailMode, currentRound: S.round});
+    gvA.render(main.nodes, main.edges, S.round, recAt(main, S.round), null, trailExtra(main));
+    gvB.render(ctl.nodes, ctl.edges, S.round, recAt(ctl, S.round), null, trailExtra(ctl));
     const lastPerRound = (m, keep) => [...new Map(m.rounds.filter(keep).map(r => [r.round, r])).values()];
     const series = (m, key) => lastPerRound(m, r => r.graph).map(r => ({x: r.round, y: r.graph[key]}));
     const nov = m => m.rounds.filter(r => r.novelty != null).map(r => ({x: r.round, y: r.novelty}));
@@ -301,7 +324,8 @@
 
   function renderThreads() {
     const m = cur(), box = $('th-list');
-    const info = m && m.threads(S.round);
+    if (!m) { box.innerHTML = '<div class="muted small">Select a run to see its questions.</div>'; return; }
+    const info = m.threads(S.round);
     if (!info) { $('th-kpis').innerHTML = ''; $('ch-threads').innerHTML = ''; $('th-activity').innerHTML = ''; box.innerHTML = '<div class="muted small">This run does not track questions (it was started with "Track open questions" off, or before questions existed).</div>'; return; }
     const t = info.totals, live = S.status[m.id], active = ACTIVE.includes(liveState(m.id));
     $('th-kpis').innerHTML =
@@ -420,6 +444,13 @@
 
   /* ---- wiring ----------------------------------------------------------------------------------------------------- */
   function bind() {
+    try { const saved = localStorage.getItem('qualk.trail'); if (['off', 'last', 'all'].includes(saved)) S.trailMode = saved; } catch (e) { /* private mode */ }
+    $('trail-mode').value = S.trailMode; $('trail-mode').title = G.TRAIL_LEGEND;
+    $('trail-mode').onchange = () => {
+      S.trailMode = $('trail-mode').value; viewFor = null;
+      try { localStorage.setItem('qualk.trail', S.trailMode); } catch (e) { /* private mode */ }
+      draw();
+    };
     $('side').addEventListener('click', e => {
       const link = e.target.closest('a[data-node]');
       if (link) { e.preventDefault(); return selectNode(link.dataset.node); }

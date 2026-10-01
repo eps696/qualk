@@ -114,7 +114,7 @@
 
   /* ---- the graph ------------------------------------------------------------------------ */
   class GraphView {
-    /* opts: onNodeClick(node), onBackgroundClick() */
+    /* opts: onNodeClick(node), onBackgroundClick(), onTrailClick(round) */
     constructor(svgEl, opts = {}) {
       this.svgEl = svgEl;
       this.svg = d3.select(svgEl);
@@ -123,6 +123,7 @@
       this.gHulls = this.root.append('g');
       this.gEdges = this.root.append('g');
       this.gEdgeLabels = this.root.append('g');
+      this.gTrail = this.root.append('g');
       this.gNodes = this.root.append('g');
       this.gLabels = this.root.append('g');
       this.pos = {};            // id -> {x, y}: the layout grows, it is not reshuffled every round
@@ -168,7 +169,8 @@
 
     /* nodes: [{id, kind, name, gist, first}], edges: [{id, s, p, o, conf, val, aff, since, until, role}]
      * extra: {threads: table rows (draws halos, hides thread nodes), threadSel: id to highlight,
-     *         focus: focused thread id, aimed: thread id the round's probe was aimed at} */
+     *         focus: focused thread id, aimed: thread id the round's probe was aimed at,
+     *         trail: trailOf(...) arrows, trailMode: 'off'|'last'|'all', currentRound} */
     render(nodes, edges, round, rec, selected, extra = {}) {
       const el = this.svgEl;
       const W = el.clientWidth || 600, H = el.clientHeight || 400;
@@ -257,6 +259,47 @@
         .style('fill', d => d.l.e.val <= -0.3 ? css('--hostile') : css('--ink'))
         .text(d => (d.out ? `${d.l.e.p.replace(/_/g, ' ')} →` : `← ${d.l.e.p.replace(/_/g, ' ')}`));
 
+      // The exploration trail: one arrow per probe (seed -> partner). The run's path, not the quantum walker's.
+      const trailMode = extra.trailMode || 'off', currentRound = extra.currentRound ?? round;
+      let arrows = (extra.trail || []).filter(a => index[a.from] && index[a.to] && a.from !== a.to);
+      arrows = trailMode === 'off' ? [] : trailMode === 'last' ? arrows.slice(-8) : arrows;
+      const ageOf = a => Math.max(0, currentRound - a.round);
+      const span = Math.max(8, arrows.length ? currentRound - arrows[0].round : 8);
+      const arrowColor = a => a.pinned ? css('--ink') : a.thread ? threadColor(Math.max(0, table.findIndex(t => t.id === a.thread)))
+        : a.origin === 'cross' ? css('--muted') : a.origin === 'mutate' ? css('--hit') : css('--q');
+      const arrowKind = a => a.pinned ? 'pinned' : a.origin === 'cross' ? 'recombination' : a.origin === 'mutate' ? 'variation'
+        : a.thread ? 'aimed at a question' : 'fresh probe';
+      const onTrail = this.opts.onTrailClick;
+      const tl = this.gTrail.selectAll('path.tl').data(arrows, a => a.round);
+      tl.exit().remove();
+      const trailLines = tl.enter().append('path').attr('class', 'tl').attr('fill', 'none').attr('stroke-linecap', 'round')
+        .style('cursor', onTrail ? 'pointer' : 'default').merge(tl)
+        .attr('stroke', arrowColor).attr('stroke-dasharray', a => a.origin === 'cross' ? '5 4' : null)
+        .attr('stroke-width', a => ageOf(a) === 0 ? 3.2 : 1.8)
+        .attr('stroke-opacity', a => ageOf(a) === 0 ? 1 : Math.max(.18, .75 * (1 - ageOf(a) / (span + 1))))
+        .on('click', onTrail ? (ev, a) => { ev.stopPropagation(); onTrail(a.round); } : null);
+      trailLines.select('title').remove();
+      trailLines.append('title').text(a => `round ${a.round}: ${nameOf[a.from]} \u2192 ${nameOf[a.to]} (${arrowKind(a)})`);
+      const th = this.gTrail.selectAll('path.th').data(arrows, a => a.round);
+      th.exit().remove();
+      const trailHeads = th.enter().append('path').attr('class', 'th').attr('pointer-events', 'none').merge(th)
+        .attr('fill', arrowColor).attr('fill-opacity', a => ageOf(a) === 0 ? 1 : Math.max(.2, .8 * (1 - ageOf(a) / (span + 1))));
+      const tt = this.gTrail.selectAll('text.trl').data(arrows.filter(a => ageOf(a) <= 8), a => a.round);
+      tt.exit().remove();
+      const trailLabels = tt.enter().append('text').attr('class', 'trl').attr('text-anchor', 'middle').attr('pointer-events', 'none')
+        .merge(tt).style('fill', arrowColor).text(a => a.round);
+      // curve from the seed to just short of the partner, with an arrowhead pointing into it
+      const arrowGeo = a => {
+        const p0 = index[a.from], p1 = index[a.to];
+        const dx = p1.x - p0.x, dy = p1.y - p0.y, c = {x: (p0.x + p1.x) / 2 - dy * 0.18, y: (p0.y + p1.y) / 2 + dx * 0.18};
+        const norm = (x, y) => { const L = Math.hypot(x, y) || 1; return {x: x / L, y: y / L}; };
+        const u = norm(p1.x - c.x, p1.y - c.y), v = norm(c.x - p0.x, c.y - p0.y);
+        const tip = {x: p1.x - u.x * 9, y: p1.y - u.y * 9}, s = {x: p0.x + v.x * 8, y: p0.y + v.y * 8};
+        const back = {x: tip.x - u.x * 9, y: tip.y - u.y * 9};
+        return {s, c, tip, l: {x: back.x - u.y * 4.5, y: back.y + u.x * 4.5}, r: {x: back.x + u.y * 4.5, y: back.y - u.x * 4.5},
+                m: {x: .25 * s.x + .5 * c.x + .25 * tip.x, y: .25 * s.y + .5 * c.y + .25 * tip.y}};
+      };
+
       const onClick = this.opts.onNodeClick;
       const node = this.gNodes.selectAll('circle').data(simNodes, n => n.id);
       node.exit().remove();
@@ -292,6 +335,9 @@
         return {x: d3.mean(pts, p => p.x), y: d3.min(pts, p => p.y) - 24};
       };
       const place = () => {
+        trailLines.attr('d', a => { const g = arrowGeo(a); return `M${g.s.x},${g.s.y}Q${g.c.x},${g.c.y} ${g.tip.x},${g.tip.y}`; });
+        trailHeads.attr('d', a => { const g = arrowGeo(a); return `M${g.tip.x},${g.tip.y}L${g.l.x},${g.l.y}L${g.r.x},${g.r.y}Z`; });
+        trailLabels.attr('x', a => arrowGeo(a).m.x).attr('y', a => arrowGeo(a).m.y - 3);
         hullAll.attr('d', hullPath);
         hullLabels.attr('x', h => centroid(h).x).attr('y', h => centroid(h).y);
         linkAll.attr('x1', l => l.source.x).attr('y1', l => l.source.y).attr('x2', l => l.target.x).attr('y2', l => l.target.y);
@@ -438,6 +484,7 @@
         (w.atlas_error ? `<span>atlas fallback: ${esc(w.atlas_error)}</span>` : '') +
         (w.qasm_path ? `<span>circuit ${opts.qasmHref ? `<a href="${esc(opts.qasmHref(rec.round))}" download>${esc(w.qasm_path)}</a>` : `<b>${esc(w.qasm_path)}</b>`}</span>` : '') +
         `</div></details>`;
+      html += waveBlockHTML(w);
     }
 
     const status = (rec.harvest || {}).status || '';
@@ -485,9 +532,131 @@
       `${(e.event === 'advanced' || e.event === 'resolved') && e.gist ? '<div class="muted small">' + esc(e.gist.slice(0, 180)) + '</div>' : ''}</div>`).join('');
   }
 
+  /* ---- the exploration trail: one arrow per probe, seed -> partner -------------------------- */
+  /* Probes with two components, up to round `upto`, in order. This is the path of the *run* (where
+   * curiosity went); it is not a path of the quantum walker, which has none. */
+  function trailOf(rounds, upto) {
+    return rounds.filter(r => r.kind === 'probe' && r.probe && r.round <= upto && (r.probe.components || []).length >= 2)
+      .map(r => ({round: r.round, from: r.probe.components[0].id, to: r.probe.components[1].id, origin: r.probe.origin,
+                  thread: r.probe.thread || '', pinned: /^pinned/.test(r.probe.selection || '')}));
+  }
+  const TRAIL_LEGEND = 'One arrow per probe, from its seed concept to its partner, numbered by round. ' +
+    'Violet: fresh probe. Teal: variation of an earlier probe. Dashed grey: recombination (no walk chose it). ' +
+    'Question colour: aimed at that open question. Black: pinned by you. Click an arrow to jump to its round.';
+
+  /* ---- the wave: how a walk spreads over its window before it is measured ------------------------ */
+  const waveState = new Map();       // run|round -> {x: frame position, playing}
+  function waveBlockHTML(walk) {
+    if (!walk.evolution) return '<div class="muted small">No wave view for this round: the run was recorded before wave data existed.</div>';
+    return '<details class="wavebox" open><summary>Watch the walk unfold</summary><div class="wave"></div></details>';
+  }
+
+  /* Fills a `.wave` element: two small copies of the walk window (quantum, diffusion) whose circles grow
+   * with the chance of finding the walker there, a time slider with Play, and the partner's probability
+   * over time. `key` keeps the scrub position across re-renders of the inspector. */
+  function mountWave(el, walk, names, key) {
+    const evo = walk && walk.evolution;
+    if (!el || !evo) return;
+    const K = evo.times.length, T = evo.times[K - 1], n = walk.nodes.length, S = 150;
+    if (!waveState.has(key)) waveState.set(key, {x: K - 1, playing: false});
+    const st = waveState.get(key);
+    const targetIdx = walk.target ? walk.nodes.indexOf(walk.target) : -1;
+    const name = i => names[walk.nodes[i]] || walk.nodes[i];
+    el.innerHTML =
+      '<div class="wave-panels">' +
+      '<figure><svg class="wsvg wq" role="img" aria-label="quantum walk spreading"></svg><figcaption><i style="background:var(--q)"></i>quantum walk</figcaption></figure>' +
+      '<figure><svg class="wsvg wc" role="img" aria-label="diffusion spreading"></svg><figcaption><i style="background:var(--c)"></i>diffusion control</figcaption></figure></div>' +
+      `<div class="wave-ctl"><button class="wplay" type="button"></button><input class="wslide" type="range" min="0" max="${K - 1}" step="0.02" aria-label="evolution time"><span class="wt"></span></div>` +
+      (targetIdx >= 0 ? '<div class="wave-chart"></div>' : '') +
+      `<p class="cap">Before it is measured the walker has no position. Each circle is the chance of finding it on that concept as time grows ` +
+      `(bigger = more likely): the quantum wave can reach far, pile up and cancel on loops and react to hostile (red dashed) links; diffusion only spreads smoothly. ` +
+      `At t=${T} one measurement is taken and the first eligible concept becomes the partner (green ring).</p>`;
+
+    // one shared layout of the window, computed once (deterministic: d3 starts nodes on a phyllotaxis spiral)
+    const nodes = walk.nodes.map((id, i) => ({i}));
+    const links = walk.edges.map(e => ({source: e.u, target: e.v, w: e.weight}));
+    const sim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.i).distance(l => 40 / Math.max(.4, Math.sqrt(Math.abs(l.w)))).strength(.8))
+      .force('charge', d3.forceManyBody().strength(-110)).force('x', d3.forceX(0).strength(.06)).force('y', d3.forceY(0).strength(.06)).stop();
+    for (let k = 0; k < 240; k++) sim.tick();
+    const x0 = d3.min(nodes, p => p.x), x1 = d3.max(nodes, p => p.x), y0 = d3.min(nodes, p => p.y), y1 = d3.max(nodes, p => p.y);
+    const pad = 20, sc = Math.min((S - 2 * pad) / Math.max(1, x1 - x0), (S - 2 * pad) / Math.max(1, y1 - y0));
+    const pos = nodes.map(p => ({x: S / 2 + (p.x - (x0 + x1) / 2) * sc, y: S / 2 + (p.y - (y0 + y1) / 2) * sc}));
+
+    const lerp = (rows, x) => {
+      const i0 = Math.min(K - 1, Math.max(0, Math.floor(x))), i1 = Math.min(K - 1, i0 + 1), f = x - i0;
+      return rows[i0].map((v, j) => v + (rows[i1][j] - v) * f);
+    };
+    const makePanel = (svgEl, colorVar, rows) => {
+      const svg = d3.select(svgEl).attr('viewBox', `0 0 ${S} ${S}`);
+      svg.selectAll('line').data(walk.edges).enter().append('line')
+        .attr('x1', e => pos[e.u].x).attr('y1', e => pos[e.u].y).attr('x2', e => pos[e.v].x).attr('y2', e => pos[e.v].y)
+        .attr('stroke', e => e.weight < 0 ? css('--hostile') : css('--node')).attr('stroke-dasharray', e => e.weight < 0 ? '3 2' : null)
+        .attr('stroke-width', e => 0.8 + 2.2 * Math.min(1, Math.abs(e.weight))).attr('stroke-opacity', .55);
+      const circ = svg.selectAll('circle').data(pos).enter().append('circle').attr('cx', p => p.x).attr('cy', p => p.y)
+        .attr('fill', css(colorVar)).attr('stroke', (p, i) => i === targetIdx ? css('--hit') : css('--ink'));
+      circ.append('title');
+      const lab = svg.append('g');
+      return x => {
+        const P = lerp(rows, x), atEnd = x >= K - 1.001;
+        circ.attr('r', (p, i) => 2.5 + 15 * Math.sqrt(Math.max(0, P[i])))
+          .attr('fill-opacity', (p, i) => 0.15 + 0.85 * Math.sqrt(Math.max(0, P[i])))
+          .attr('stroke-width', (p, i) => (i === targetIdx && atEnd) ? 3 : (i === 0 || i === targetIdx) ? 1.4 : 0);
+        circ.select('title').text((p, i) => `${name(i)}${i === 0 ? ' (seed)' : ''}: ${(100 * P[i]).toFixed(1)}%`);
+        const top = new Set([0, ...(targetIdx >= 0 ? [targetIdx] : []),
+          ...P.map((v, i) => [v, i]).sort((a, b) => b[0] - a[0]).slice(0, 3).map(q => q[1])]);
+        const l = lab.selectAll('text').data([...top], i => i);
+        l.exit().remove();
+        l.enter().append('text').attr('class', 'wl').merge(l)
+          .attr('text-anchor', i => pos[i].x > S * 0.58 ? 'end' : 'start')      // keep labels inside the frame
+          .attr('x', i => pos[i].x + (pos[i].x > S * 0.58 ? -7 : 7)).attr('y', i => pos[i].y - 7)
+          .text(i => { const s = name(i); return s.length > 14 ? s.slice(0, 13) + '…' : s; });
+      };
+    };
+    const drawQ = makePanel(el.querySelector('.wq'), '--q', evo.quantum);
+    const drawC = makePanel(el.querySelector('.wc'), '--c', evo.classical);
+
+    let chart = null;
+    if (targetIdx >= 0) {
+      const pts = rows => evo.times.map((t, k) => ({x: t, y: rows[k][targetIdx]}));
+      chart = lineChart(el.querySelector('.wave-chart'), [{name: 'quantum', color: '--q', points: pts(evo.quantum)},
+        {name: 'diffusion', color: '--c', points: pts(evo.classical)}],
+        {title: `chance of finding the walker on ${name(targetIdx)}`, xFormat: d3.format('.1f'), format: d3.format('.0%'), xTicks: 4});
+      if (chart) chart.marker = chart.svg.append('line').attr('y1', chart.top).attr('y2', chart.bottom)
+        .attr('stroke', css('--ink')).attr('stroke-width', 1.2);
+    }
+    const slide = el.querySelector('.wslide'), btn = el.querySelector('.wplay'), label = el.querySelector('.wt');
+    const setBtn = () => { btn.textContent = st.playing ? 'Pause' : (st.x >= K - 1 ? 'Replay' : 'Play'); };
+    const update = x => {
+      drawQ(x); drawC(x);
+      const i0 = Math.min(K - 1, Math.max(0, Math.floor(x))), i1 = Math.min(K - 1, i0 + 1);
+      const t = evo.times[i0] + (evo.times[i1] - evo.times[i0]) * (x - i0);
+      slide.value = x;
+      label.textContent = `t = ${t.toFixed(2)} of ${T}` + (x >= K - 1.001 && targetIdx >= 0 ? ` · measured: ${name(targetIdx)}` : '');
+      if (chart && chart.marker) chart.marker.attr('x1', chart.x(t)).attr('x2', chart.x(t));
+    };
+    let last = null;
+    const tick = ts => {
+      if (!el.isConnected) return;               // the inspector was re-rendered: the new mount resumes playback
+      if (!st.playing) { last = null; return; }
+      if (last != null) st.x = Math.min(K - 1, st.x + (ts - last) / 1000 * ((K - 1) / 4.5));    // about 4.5 s end to end
+      last = ts; update(st.x);
+      if (st.x >= K - 1) { st.playing = false; setBtn(); return; }
+      requestAnimationFrame(tick);
+    };
+    slide.oninput = () => { st.playing = false; st.x = +slide.value; update(st.x); setBtn(); };
+    btn.onclick = () => {
+      if (st.playing) { st.playing = false; setBtn(); return; }
+      if (st.x >= K - 1.001) st.x = 0;
+      st.playing = true; last = null; setBtn(); requestAnimationFrame(tick);
+    };
+    update(st.x); setBtn();
+    if (st.playing) requestAnimationFrame(tick);
+  }
+
   /* ---- a small line chart ---------------------------------------------------------------- */
   /* series: [{name, color (css var), points: [{x, y}]}]  */
-  function lineChart(el, series, {title = '', yMax = null, format = v => v, mark = null} = {}) {
+  function lineChart(el, series, {title = '', yMax = null, format = v => v, mark = null, xFormat = null, xTicks = null} = {}) {
     const W = el.clientWidth || 300, H = el.clientHeight || 140, m = {l: 34, r: 10, t: 22, b: 20};
     const svg = d3.select(el).html('').append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').attr('height', '100%');
     const all = series.flatMap(s => s.points);
@@ -496,7 +665,7 @@
     const x = d3.scaleLinear().domain(d3.extent(all, p => p.x)).range([m.l, W - m.r]);
     if (x.domain()[0] === x.domain()[1]) x.domain([x.domain()[0] - 1, x.domain()[1] + 1]);
     const y = d3.scaleLinear().domain([0, yMax ?? (d3.max(all, p => p.y) || 1)]).nice().range([H - m.b, m.t]);
-    svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(Math.min(6, all.length)).tickFormat(d3.format('d')).tickSize(3)).attr('class', 'ax');
+    svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(xTicks || Math.min(6, all.length)).tickFormat(xFormat || d3.format('d')).tickSize(3)).attr('class', 'ax');
     svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(3).tickFormat(format).tickSize(-(W - m.l - m.r))).attr('class', 'ax grid');
     series.forEach(s => {
       if (!s.points.length) return;
@@ -507,8 +676,9 @@
     });
     if (mark != null) svg.append('line').attr('x1', x(mark)).attr('x2', x(mark)).attr('y1', m.t).attr('y2', H - m.b)
       .attr('stroke', css('--muted')).attr('stroke-dasharray', '3 3');
+    return {svg, x, y, top: m.t, bottom: H - m.b};
   }
 
-  window.QualkGraph = {GraphView, nodeCardHTML, roundPanelHTML, lineChart, threadInfo, threadStatus, threadCardsHTML,
+  window.QualkGraph = {GraphView, nodeCardHTML, roundPanelHTML, lineChart, trailOf, TRAIL_LEGEND, mountWave, threadInfo, threadStatus, threadCardsHTML,
                        threadEventsHTML, openQuestionsHTML, threadActivityHTML, threadColor, esc, pct, css};
 })();

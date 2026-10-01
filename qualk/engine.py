@@ -18,6 +18,7 @@ from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
 from .digest import Digester
+from .evolution import evolution_series
 from .nodegate import NodeGate
 from .semantic import cosine
 from .threads import ThreadKeeper
@@ -385,6 +386,11 @@ class Engine:
                       'graph': self._stats()}
             self._log(record)
             return record
+        walk_trace = probe.walk
+        if walk_trace.get('quantum_probabilities') and walk_trace.get('edges') and walk_trace.get('time'):
+            # how the walk spread over its window before it was measured, for the wave view in the UI
+            walk_trace['evolution'] = evolution_series(
+                {'nodes': walk_trace['nodes'], 'edges': walk_trace['edges']}, walk_trace['time'])
         pairs = [(self.graph.nodes[c].name, self.graph.nodes[c].gist) for c in probe.components]
         query = ' '.join(compose_query_terms(pairs))
         parcels = await self.web.harvest(query, accept=self._duplicate_check) if self.web is not None else []
