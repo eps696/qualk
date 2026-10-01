@@ -385,9 +385,13 @@
     const nq = ((rec.threads && rec.threads.events) || []).length;
     const summary = `+${d.nodes.length} concept${d.nodes.length === 1 ? '' : 's'}, +${d.assertions.length} claim${d.assertions.length === 1 ? '' : 's'}` +
       (nq ? `, ${nq} question event${nq === 1 ? '' : 's'}` : '');
+    const g = rec.gated;
     const changed = step(4, 'What it changed',
       (d.nodes.length ? `<div class="added">${d.nodes.map(n => `<span>+ ${esc(n.name)}</span>`).join(', ')}</div>` : '<div class="muted small">No new concepts.</div>') +
-      `<div class="muted small">${d.assertions.length} new claim${d.assertions.length === 1 ? '' : 's'} between concepts.</div>` + threadEventsHTML(rec));
+      `<div class="muted small">${d.assertions.length} new claim${d.assertions.length === 1 ? '' : 's'} between concepts.</div>` +
+      (g ? `<div class="skipped" title="The node gate keeps the graph free of bare names, dates and figures: a concept needs a one-sentence description, and a claim needs both ends to be established concepts.">` +
+        `Node gate dropped ${g.nodes} concept${g.nodes === 1 ? '' : 's'} without a description and ${g.claims} claim${g.claims === 1 ? '' : 's'} naming an unestablished concept (of ${g.ops} proposed).</div>` : '') +
+      threadEventsHTML(rec));
     if (rec.kind === 'inject' || rec.kind === 'seed') {
       const title = rec.kind === 'seed' ? 'Seed passage' : 'Injected observation';
       return `<h1 class="rp-title">Round ${rec.round} <span>${title}</span></h1>` +

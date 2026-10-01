@@ -158,3 +158,19 @@ def fake_thread_extractor(delay: float = 0.0):
         return {'ops': [{'op': 'thread', 'name': cand['name'], 'state': 'resolved',
                          'gist': f"Answered by: {text[:60]}"}]}
     return extract
+
+
+def sloppy(extractor, every: int = 3):
+    """Wrap an extractor so that every k-th page it also proposes what the node gate exists to stop:
+    a concept without a description, and a claim about a figure that was never established."""
+    state = {'i': 0}
+
+    async def extract(text, known):
+        out = await extractor(text, known)
+        state['i'] += 1
+        if state['i'] % every == 0:
+            i = state['i']
+            out['ops'] += [{'op': 'node', 'kind': 'motif', 'name': f'figure {i}'},
+                           {'op': 'assert', 'subject': f'idea {i}', 'pred': 'precedes', 'object': f'the year {1900 + i}', 'conf': .6}]
+        return out
+    return extract

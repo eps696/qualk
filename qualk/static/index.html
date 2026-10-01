@@ -114,6 +114,7 @@
           <label>explore <input name="explore" type="number" step="0.05" min="0" max="1"></label>
           <label>total rounds <input name="rounds" type="number" min="1"></label>
           <label>aim at questions <input name="thread_aim" type="number" step="0.05" min="0" max="1"></label>
+          <label title="How many of the nearest concepts that have no relation yet are shown to the extractor with each page, so the page can be related to them.">orphan focus <input name="orphan_focus" type="number" min="0" max="10"></label>
           <label title="Skip a fetched page closer than this to a page already read (distance = 1 - cosine). 0 = off.">skip near-duplicates <input name="dedupe" type="number" step="0.01" min="0" max="0.5"></label>
           <button type="submit" class="primary wide">Apply at next round</button>
         </form>
@@ -159,6 +160,7 @@
     </div>
     <label class="check"><input name="paired" type="checkbox"> Also run the diffusion control from the same seed (paired, in lockstep)</label>
     <label class="check"><input name="start_paused" type="checkbox"> Start paused (step round by round)</label>
+    <label class="check" title="Drops concepts without a description and claims that name a concept not already established, so the graph does not fill with bare names, dates and figures."><input name="node_gate" type="checkbox" checked> Node gate: keep only described concepts and claims between established ones</label>
     <label class="check"><input name="threads" type="checkbox" checked> Track open questions (threads): raise, advance, answer, and aim probes at them</label>
     <details>
       <summary>Walk parameters</summary>
@@ -168,9 +170,10 @@
         <label>time t <input name="time" type="number" step="0.1" min="0.1" value="3"></label>
         <label>shots <input name="shots" type="number" min="1" max="65536" value="1024"></label>
         <label>backend <select name="backend"><option value="qiskit">local Qiskit</option><option value="atlas">Moth Atlas</option></select></label>
-        <label>explore <input name="explore" type="number" step="0.05" min="0" max="1" value="0.4"></label>
+        <label>explore <input name="explore" type="number" step="0.05" min="0" max="1" value="0.7"></label>
         <label>random seed <input name="rng" type="number" value="0"></label>
         <label>aim at questions <input name="thread_aim" type="number" step="0.05" min="0" max="1" value="0.3"></label>
+        <label title="How many of the nearest concepts that have no relation yet are shown to the extractor with each page, so the page can be related to them.">orphan focus <input name="orphan_focus" type="number" min="0" max="10" value="3"></label>
         <label title="Skip a fetched page closer than this to a page already read (distance = 1 - cosine). 0 = off. About 0.1 catches copies, mirrors and close paraphrases.">skip near-duplicates <input name="dedupe" type="number" step="0.01" min="0" max="0.5" value="0.10"></label>
         <label>run name (optional) <input name="name" maxlength="64" placeholder="auto"></label>
       </div>

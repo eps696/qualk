@@ -69,6 +69,25 @@ The **Questions** tab shows answered-of-raised, the open/answered curve, every q
 activity feed; the graph draws each open question as a halo around its concepts. You can ask your own question,
 focus all probes on one, or close one.
 
+## Graph hygiene: keeping the graph meaningful
+
+Claims used to mint nodes for whatever they mentioned, so figures, dates and one-off names became concepts with
+nothing but a name (in Assembly: 229 of 564 nodes in one run), which make poor search queries and useless walk
+windows. Three mechanics, all from Assembly, prevent that:
+
+- **Node gate** (`nodegate.py`, on by default): before anything reaches the graph, a concept without a one-sentence
+  description is dropped, and so is a claim unless both its ends are established concepts or described concepts
+  declared in the same extraction (the object of an `attr` claim is plain text, not an end). Threads pass, but the
+  gate runs first, so a question can only rest on concepts it has accepted. Drops are counted per page and shown in
+  the round panel. The extraction prompt tells the model the same rules.
+- **Orphan focus** (`orphan_focus`, default 3): each page is read with the nearest described concepts that have no
+  relation yet shown to the extractor, so the page can connect them; no extra LLM call.
+- **Probe spread**: only described concepts are probe candidates; the draw weight is `1 / (1 + visits)^2` and a
+  concept used in one of the last 24 probes is not picked again as a walk partner (`exploration.py`).
+
+Defaults follow Assembly's current ones (`explore` 0.7, `thread_decay` 0.93). Switch the gate off in New run or
+with `--no-node-gate` to see the difference.
+
 ## Similarity, novelty and duplicates
 
 Similarity is the **cosine of text embeddings** (`BAAI/bge-small-en-v1.5`, 384-d; 1 = same, about 0.45 = unrelated).
@@ -113,7 +132,7 @@ the same topic 0.75, unrelated 0.45.
 | Path | What |
 |---|---|
 | `qualk/quantum_walk.py`, `atlas.py` | window, couplings, circuit, diffusion control, Moth Atlas client |
-| `qualk/exploration.py`, `threads.py` | probe archive (fresh / mutated / crossed / question-aimed) and the thread keeper |
+| `qualk/exploration.py`, `threads.py`, `nodegate.py` | probe archive (fresh / mutated / crossed / question-aimed), the thread keeper, the node gate |
 | `qualk/world/` | the world graph: nodes, claims, dedupe, `edge_role`, persistence |
 | `qualk/engine.py`, `digest.py`, `web.py`, `llm.py` | the round loop, page-to-graph extraction, search and fetch, LLM calls |
 | `qualk/semantic.py`, `embed.py`, `calibrate.py` | embeddings and per-edge affinity |

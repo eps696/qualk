@@ -18,6 +18,7 @@ from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
 from .digest import Digester
+from .nodegate import NodeGate
 from .semantic import cosine
 from .threads import ThreadKeeper
 from .exploration import ProbeArchive, observation_novelty, score_observation
@@ -65,7 +66,7 @@ class Engine:
     def __init__(self, out_dir: str, extractor, index, web: Optional[WebSource], walk=None,
                  explore: float = 0.4, seed: int = 0, thread_extractor=None, threads: bool = False,
                  thread_aim: float = 0.3, thread_cap: int = 24, thread_decay: float = 0.95,
-                 dedupe: float = 0.0):
+                 dedupe: float = 0.0, node_gate: bool = False, orphan_focus: int = 0):
         self.out_dir = out_dir
         os.makedirs(out_dir, exist_ok=True)
         self.rng = random.Random(seed)
@@ -87,9 +88,17 @@ class Engine:
         self.keeper = ThreadKeeper(decay=thread_decay, cap=thread_cap)
         self.focus_thread: Optional[str] = None       # steered: aim every probe at this thread
         self._user_closed: set = set()
+        # Graph hygiene. The gate drops nodes without a description and claims whose ends are not
+        # established; it runs first, so a thread is grounded only on concepts the gate has vetted.
+        self.gate = NodeGate() if node_gate else None
+
+        def op_filter(ops, graph, index=None):
+            if self.gate is not None:
+                ops = self.gate.filter_ops(ops, graph, index)
+            return self.keeper.filter_ops(ops, graph, index) if self.threads_on else ops
         self.digester = Digester(self.graph, extractor, semantic_index=index,
-                                 op_filter=self.keeper.filter_ops if self.threads_on else None,
-                                 thread_ranker=self.keeper)
+                                 op_filter=op_filter if (node_gate or self.threads_on) else None,
+                                 thread_ranker=self.keeper, orphan_focus=orphan_focus)
         self.rounds_path = os.path.join(out_dir, 'rounds.jsonl')
         self.round = 0
         self._resume()
@@ -139,10 +148,17 @@ class Engine:
             record = {'round': 0, 'kind': 'seed', 'source': parcel.origin, 'excerpt': parcel.text[:400],
                       'kept': result.kept, 'summary': result.summary, 'error': result.error,
                       'delta': self._delta(before), 'graph': self._stats(), 'threads': threads,
-                      'seconds': round(time.time() - t0, 2)}
+                      'gated': self._gated(), 'seconds': round(time.time() - t0, 2)}
             self._log(record)
             records.append(record)
         return records
+
+    def _gated(self) -> Optional[Dict[str, int]]:
+        """What the node gate dropped from the latest extraction, or None if it dropped nothing."""
+        if self.gate is None:
+            return None
+        last = self.gate.last
+        return dict(last) if (last['nodes'] or last['claims']) else None
 
     def _delta(self, before) -> Dict[str, Any]:
         nodes0, edges0 = before
@@ -352,7 +368,7 @@ class Engine:
         record = {'round': r, 'kind': 'inject', 'source': parcel.origin, 'excerpt': parcel.text[:400],
                   'kept': result.kept, 'summary': result.summary, 'error': result.error,
                   'delta': self._delta(before), 'graph': self._stats(), 'threads': threads,
-                  'fitness': self.archive.snapshot(), 'seconds': round(time.time() - t0, 2)}
+                  'gated': self._gated(), 'fitness': self.archive.snapshot(), 'seconds': round(time.time() - t0, 2)}
         self._log(record)
         return record
 
@@ -398,7 +414,7 @@ class Engine:
             record.update(source=parcel.origin, excerpt=parcel.text[:400], kept=result.kept,
                           summary=result.summary, error=result.error, delta=self._delta(before),
                           novelty=round(novelty, 4), distance=None if distance is None else round(distance, 4),
-                          score=round(metrics['score'], 4))
+                          score=round(metrics['score'], 4), gated=self._gated())
             threads = await self._thread_pass(parcel, r, vector, aimed=probe.thread)
         self.index.sync_graph(self.graph)
         self.graph.save()

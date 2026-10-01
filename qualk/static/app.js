@@ -334,7 +334,7 @@
     ev.preventDefault();
     const f = $('new-form').elements, num = k => Number(f[k].value);
     const body = {topic: f.topic.value.trim(), seed: f.seed.value, rounds: num('rounds'), walk: f.walk.value, paired: f.paired.checked,
-                  start_paused: f.start_paused.checked, threads: f.threads.checked, thread_aim: num('thread_aim'), dedupe: num('dedupe'), nodes: num('nodes'), steps: num('steps'), time: num('time'), shots: num('shots'),
+                  start_paused: f.start_paused.checked, threads: f.threads.checked, thread_aim: num('thread_aim'), dedupe: num('dedupe'), node_gate: f.node_gate.checked, orphan_focus: num('orphan_focus'), nodes: num('nodes'), steps: num('steps'), time: num('time'), shots: num('shots'),
                   backend: f.backend.value, explore: num('explore'), rng: num('rng'), name: f.name.value.trim()};
     if (!body.topic && !body.seed.trim()) return showNewError('Give a topic or a seed text.');
     if (body.paired && body.walk !== 'quantum') return showNewError('A paired run needs the quantum walk.');
@@ -457,7 +457,7 @@
     $('params-form').onsubmit = async ev => {
       ev.preventDefault();
       const live = S.status[S.current], f = $('params-form').elements, changes = {};
-      ['walk', 'backend', 'nodes', 'steps', 'time', 'shots', 'explore', 'rounds', 'thread_aim', 'dedupe'].forEach(k => {
+      ['walk', 'backend', 'nodes', 'steps', 'time', 'shots', 'explore', 'rounds', 'thread_aim', 'dedupe', 'orphan_focus'].forEach(k => {
         if (f[k].disabled) return;
         const v = ['walk', 'backend'].includes(k) ? f[k].value : Number(f[k].value);
         if (v !== live.cfg[k]) changes[k] = v;

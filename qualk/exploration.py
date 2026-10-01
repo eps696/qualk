@@ -48,7 +48,9 @@ def observation_novelty(distance):
 # A concept that appears in one of this many latest probes is not picked again as a walk target:
 # without it a hub of the small early relation graph sits in almost every window and every
 # probe re-queries the same topic (dog7: 23% of picks), which keeps observation novelty low.
-TARGET_COOLDOWN = 8
+TARGET_COOLDOWN = 24
+# How hard a node's visit count weighs against drawing it again: weight = 1 / (1 + visits) ** VISIT_POWER.
+VISIT_POWER = 2
 
 
 class ProbeArchive:
@@ -108,13 +110,18 @@ class ProbeArchive:
                and (not born_of_intake or not (n.by or '').startswith('frag:'))]
         if threads is not None:
             ids = [i for i in ids if graph.nodes[i].kind != 'thread']
+        # A probe is rendered from its components' gists (a web query): a node with only a name is
+        # never worth drawing. Unfiltered only when too few have one.
+        gisted = [i for i in ids if graph.nodes[i].gist]
+        if len(gisted) >= 2:
+            ids = gisted
         if not ids:
             return None
         walk_ids = [i for i in ids if graph.nodes[i].kind != 'thread']
         def draw(exclude=(), candidates=None):
             choices = candidates if candidates is not None else ids
             options = [i for i in choices if i not in exclude] or choices
-            return self.rng.choices(options, weights=[1 / (1 + self.visits.get(i, 0))
+            return self.rng.choices(options, weights=[1 / (1 + self.visits.get(i, 0)) ** VISIT_POWER
                                                      for i in options], k=1)[0]
         if threads is not None and seed_override is None and (
                 thread_focus or (thread_aim > 0 and self.rng.random() < thread_aim)):

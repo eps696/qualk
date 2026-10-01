@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from .web import Parcel
-from .world.ops import parse_ops
+from .world.ops import edge_role, parse_ops
 from .world.store import WorldGraph
 from .world.view import build_view
 
@@ -33,14 +33,39 @@ class DigestResult:
 
 class Digester:
     def __init__(self, graph: WorldGraph, extractor: Extractor, budget: int = 2400, semantic_index=None,
-                 op_filter=None, thread_ranker=None):
+                 op_filter=None, thread_ranker=None, orphan_focus: int = 0):
         self.op_filter = op_filter              # e.g. ThreadKeeper.filter_ops: drops ungrounded open threads
         self.thread_ranker = thread_ranker      # ThreadKeeper: ranks the `open` list by decayed pressure
+        # How many nearest concepts with no relation edge are added to the extractor's focus, so
+        # `known.present` shows them and the page can be related to them. 0 = off.
+        self.orphan_focus = orphan_focus
         self.graph = graph
         self.extractor = extractor
         self.budget = budget
         self.semantic_index = semantic_index
         self.last_retrieval = []
+
+    def _nearest_orphans(self, vector, skip) -> List[str]:
+        """The nearest described concepts that no open *relation* claim touches: scaffold-only or
+        isolated, so the walk never reaches them and nothing ever relates them to new material."""
+        linked = set()
+        for a in self.graph.open_assertions():
+            if edge_role(a.pred) == 'relation':
+                linked.update((a.subject, a.object))
+        found: List[str] = []
+        try:
+            hits = self.semantic_index.search(vector, prefix='node:', k=60)
+        except ValueError:
+            return found
+        for h in hits:
+            nid = h['metadata'].get('node_id')
+            n = self.graph.nodes.get(nid) if nid else None
+            if n is None or not n.gist or n.kind == 'thread' or nid in linked or nid in skip or nid in found:
+                continue
+            found.append(nid)
+            if len(found) >= self.orphan_focus:
+                break
+        return found
 
     async def feed(self, parcel: Parcel, at: int, query_vector=None) -> DigestResult:
         self.last_retrieval = []
@@ -50,8 +75,15 @@ class Digester:
         if self.semantic_index is not None:
             self.semantic_index.sync_graph(self.graph)
             vector = query_vector if query_vector is not None else self.semantic_index.encode(parcel.text)
-            self.last_retrieval = self.semantic_index.retrieve_nodes(vector, self.graph, k=6)
+            try:
+                self.last_retrieval = self.semantic_index.retrieve_nodes(vector, self.graph, k=6)
+            except ValueError as e:
+                # A non-finite embedding must cost only this page's neighbour retrieval, never the run.
+                print(f'!! retrieval skipped ({e})')
+                self.last_retrieval = []
             focus = [h['metadata']['node_id'] for h in self.last_retrieval]
+            if self.orphan_focus > 0:
+                focus += self._nearest_orphans(vector, set(focus))
         known = build_view(self.graph, focus=focus, budget=self.budget)
         if self.thread_ranker is not None:
             override = self.thread_ranker.effective_open_names(self.graph, at)

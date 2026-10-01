@@ -27,7 +27,8 @@ from .settings import scrub
 
 WALKS = ('quantum', 'diffusion', 'classical')
 BACKENDS = ('qiskit', 'atlas')
-LIVE_PARAMS = ('walk', 'nodes', 'steps', 'time', 'shots', 'backend', 'explore', 'rounds', 'thread_aim', 'dedupe')
+LIVE_PARAMS = ('walk', 'nodes', 'steps', 'time', 'shots', 'backend', 'explore', 'rounds', 'thread_aim', 'dedupe',
+               'orphan_focus')
 WALK_PARAMS = ('walk', 'nodes', 'steps', 'time', 'shots', 'backend')
 MAX_TEXT = 20000
 SEED_CHARS = 1600
@@ -59,15 +60,17 @@ class RunConfig:
     time: float = 3.0
     shots: int = 1024
     backend: str = 'qiskit'
-    explore: float = 0.4
+    explore: float = 0.7
     rng: int = 0
     paired: bool = False
     start_paused: bool = False
     threads: bool = True
     thread_aim: float = 0.3
     thread_cap: int = 24
-    thread_decay: float = 0.95
+    thread_decay: float = 0.93
     dedupe: float = 0.10
+    node_gate: bool = True       # drop concepts without a description and claims naming unestablished concepts
+    orphan_focus: int = 3        # nearest relation-less concepts shown to the extractor with each page
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], max_rounds: int = 200) -> 'RunConfig':
@@ -113,6 +116,8 @@ class RunConfig:
             raise ValueError('time must be positive and finite')
         if not 0 <= self.explore <= 1:
             raise ValueError('explore must be between 0 and 1')
+        if not 0 <= self.orphan_focus <= 10:
+            raise ValueError('orphan_focus must be between 0 and 10')
         if not 0 <= self.dedupe <= 0.5:
             raise ValueError('dedupe must be between 0 (off) and 0.5')
         if not 0 <= self.thread_aim <= 1:
@@ -249,8 +254,9 @@ class SimulatedBackend:
         pass
 
     def parts(self):
-        from .fakes import FakeWeb, HashEmbedder, fake_thread_extractor, question_extractor
-        return (HashEmbedder(), FakeWeb(delay=self.delay, mirror_every=self.mirror_every), question_extractor(delay=self.delay),
+        from .fakes import FakeWeb, HashEmbedder, fake_thread_extractor, question_extractor, sloppy
+        return (HashEmbedder(), FakeWeb(delay=self.delay, mirror_every=self.mirror_every),
+                sloppy(question_extractor(delay=self.delay)),
                 fake_thread_extractor(delay=self.delay))
 
 
@@ -380,7 +386,8 @@ class RunWorker(threading.Thread):
                              thread_extractor=thread_extractor, threads=self.cfg.threads,
                              thread_aim=self.cfg.thread_aim, thread_cap=self.cfg.thread_cap,
                              thread_decay=self.cfg.thread_decay,
-                             dedupe=getattr(self.backend, 'dedupe_override', None) or self.cfg.dedupe)
+                             dedupe=getattr(self.backend, 'dedupe_override', None) or self.cfg.dedupe,
+                             node_gate=self.cfg.node_gate, orphan_focus=self.cfg.orphan_focus)
         self.round = self.engine.round
         return index
 
@@ -422,6 +429,7 @@ class RunWorker(threading.Thread):
                         self.engine.set_walk(make_walk(new, os.path.join(self.out_dir, 'quantum')))
                     self.engine.set_explore(new.explore)
                     self.engine.thread_aim = new.thread_aim
+                    self.engine.digester.orphan_focus = new.orphan_focus
                     if not getattr(self.backend, 'dedupe_override', None):
                         self.engine.set_dedupe(new.dedupe)
                     self.cfg, self.total = new, new.rounds

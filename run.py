@@ -20,7 +20,7 @@ def get_args(argv=None):
     p.add_argument('--seed', default='', help='seed text, a .txt/.md file or a folder of them')
     p.add_argument('--topic', default='', help='seed the graph from a first web search on this topic')
     p.add_argument('--rng', type=int, default=0)
-    p.add_argument('--explore', type=float, default=0.4)
+    p.add_argument('--explore', type=float, default=0.7)
     p.add_argument('--probe_walk', choices=['quantum', 'diffusion', 'classical'], default='quantum')
     p.add_argument('--quantum_nodes', type=int, default=12)
     p.add_argument('--quantum_steps', type=int, default=8)
@@ -32,6 +32,10 @@ def get_args(argv=None):
                    help='track open questions: raise, advance, answer them, and aim probes at them')
     p.add_argument('--thread_aim', type=float, default=0.3, help='chance a fresh probe is aimed at an open question')
     p.add_argument('--thread_cap', type=int, default=24)
+    p.add_argument('--node_gate', action=argparse.BooleanOptionalAction, default=True,
+                   help='drop concepts without a description and claims naming unestablished concepts')
+    p.add_argument('--orphan_focus', type=int, default=3,
+                   help='show the extractor the nearest N concepts that have no relation yet (0 = off)')
     p.add_argument('--dedupe', type=float, default=0.10,
                    help='skip a fetched page closer than this (1 - cosine) to a page already read; 0 = off')
     return p.parse_args(argv)
@@ -64,7 +68,8 @@ async def run(a):
     index = SemanticIndex(os.path.join(a.out_dir, 'semantic.sqlite'), embedder)
     engine = Engine(a.out_dir, llm_extractor(), index, W.WebSource(), walk=build_walk(a),
                     explore=a.explore, seed=a.rng, thread_extractor=thread_extractor(), threads=a.threads,
-                    thread_aim=a.thread_aim, thread_cap=a.thread_cap, dedupe=a.dedupe)
+                    thread_aim=a.thread_aim, thread_cap=a.thread_cap, dedupe=a.dedupe,
+                    node_gate=a.node_gate, orphan_focus=a.orphan_focus)
     if not engine.graph.nodes:
         parcels = seed_texts(a.seed, random.Random(a.rng))
         if a.topic:

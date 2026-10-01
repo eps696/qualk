@@ -38,7 +38,7 @@ class EngineTests(unittest.TestCase):
         sizes = [r['graph']['nodes'] for r in records]
         self.assertEqual(sizes, sorted(sizes))
         self.assertGreater(sizes[-1], sizes[0])
-        walks = [r['probe']['walk'] for r in probes if r['probe']['walk'].get('method')]
+        walks = [r['probe']['walk'] for r in probes if r['probe']['walk'].get('target')]
         self.assertTrue(walks, 'once a relation cluster exists the walk must run')
         w = walks[-1]
         self.assertEqual(w['method'], 'qiskit-statevector')

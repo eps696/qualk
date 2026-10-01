@@ -54,9 +54,12 @@ Placement (`is_a`/`in`/`part_of`/`has`/`at`) says where something sits, not how 
 
 ## Restraint, correctly scoped
 
-Do not invent elements the passage does not support, and do not manufacture a claim to fill out a category that happens to be empty — hallucinating "knowledge" is worse than recording too little. But this is not a narrative-pacing pass: there is no fixed cap on how much a genuinely rich source may contribute. Two specific wastes, still worth avoiding:
+Do not invent elements the passage does not support, and do not manufacture a claim to fill out a category that happens to be empty — hallucinating "knowledge" is worse than recording too little. But this is not a narrative-pacing pass: there is no fixed cap on how much a genuinely rich source may contribute. Specific wastes and rules:
 
 - **Containment is not a claim.** That something merely sits within the body of a page says nothing a later step can use.
+- **Every element needs a gist** — one sentence saying what it is. A node without one is discarded, and so is any claim that names an element not already in `known` and not declared (with its gist) in this same response.
+- **Measurements, quantities, dates and figures are never elements.** Put them in a gist, or state them with an `attr` claim on the element they describe.
+- **`present` in `known` can list elements no claim touches yet.** When this passage truly bears on one of them, say how — a claim between it and something here is worth more than another claim inside this passage.
 - **A visible or mentioned detail is not automatically an element** — ask whether a later probe would plausibly need to point back at this by name. If not, it belongs in a `gist`, not as its own node.
 
 ## Output Structure
