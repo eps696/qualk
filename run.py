@@ -26,7 +26,7 @@ def get_args(argv=None):
     p.add_argument('--quantum_steps', type=int, default=8)
     p.add_argument('--quantum_time', type=float, default=3.0)
     p.add_argument('--quantum_shots', type=int, default=1024)
-    p.add_argument('--quantum_backend', choices=['atlas', 'qiskit'], default='atlas')
+    p.add_argument('--quantum_backend', choices=['atlas', 'qpu', 'qiskit'], default='atlas')
     p.add_argument('--search_order', default='')
     p.add_argument('--threads', action=argparse.BooleanOptionalAction, default=True,
                    help='track open questions: raise, advance, answer them, and aim probes at them')

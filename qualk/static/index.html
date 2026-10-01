@@ -107,7 +107,7 @@
         <summary>Live parameters</summary>
         <form id="params-form" class="grid2">
           <label>walk <select name="walk"><option>quantum</option><option>diffusion</option><option>classical</option></select></label>
-          <label>backend <select name="backend"><option>qiskit</option><option>atlas</option></select></label>
+          <label>backend <select name="backend"><option value="qiskit">qiskit</option><option value="atlas">atlas (aer)</option><option value="qpu">QPU</option></select></label>
           <label>nodes (qubits) <input name="nodes" type="number" min="2" max="24"></label>
           <label>steps <input name="steps" type="number" min="1" max="20"></label>
           <label>time t <input name="time" type="number" step="0.1" min="0.1"></label>
@@ -170,7 +170,7 @@
         <label>steps <input name="steps" type="number" min="1" max="20" value="8"></label>
         <label>time t <input name="time" type="number" step="0.1" min="0.1" value="3"></label>
         <label>shots <input name="shots" type="number" min="1" max="65536" value="1024"></label>
-        <label>backend <select name="backend"><option value="qiskit">local Qiskit</option><option value="atlas">Moth Atlas</option></select></label>
+        <label>backend <select name="backend"><option value="qiskit">local Qiskit</option><option value="atlas">Moth Atlas emulator (aer)</option><option value="qpu">Moth Atlas: real QPU</option></select></label>
         <label>explore <input name="explore" type="number" step="0.05" min="0" max="1" value="0.7"></label>
         <label>random seed <input name="rng" type="number" value="0"></label>
         <label>aim at questions <input name="thread_aim" type="number" step="0.05" min="0" max="1" value="0.3"></label>
@@ -204,6 +204,7 @@
       <button type="button" data-test="llm">Test LLM</button>
       <button type="button" data-test="embed">Test embedder</button>
       <button type="button" data-test="atlas">Test Atlas</button>
+      <button type="button" data-test="qpu">Test QPU</button>
     </div>
     <div id="settings-msg" class="muted small"></div>
     <div class="dlg-btns"><button type="button" id="settings-close">Close</button><button type="submit" class="primary" id="settings-save">Save</button></div>

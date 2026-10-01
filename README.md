@@ -56,8 +56,9 @@ a note instead). The run's actual path is the **exploration trail** on the graph
 its seed to its partner (colour: fresh, variation, recombination, question-aimed, pinned), switchable between the
 last 8 probes, all, or off; clicking an arrow jumps to its round.
 
-Circuits run on **Moth Atlas** (`MOTH_API_KEY`; falls back to local Qiskit per pick, and stops trying after 3
-failures) or locally. Windows over 16 qubits use an exact closed form (verified equal to the circuit) or Atlas's
+Circuits run on **local Qiskit**, the **Moth Atlas emulator** (`atlas`) or a **real QPU** via Atlas (`qpu`), chosen per run
+in the app (or `--quantum_backend`). On **Moth Atlas** (`MOTH_API_KEY`; falls back to local Qiskit per pick, and stops trying after 3
+failures, unless `MOTH_ATLAS_STRICT=1`) or locally. Windows over 16 qubits use an exact closed form (verified equal to the circuit) or Atlas's
 `matrix_product_state`. Every executed circuit is saved as OpenQASM (`quantum/round-XXXXX.qasm`). The round panel
 shows both distributions per qubit, the difference between them, circuit error, backend and Atlas job.
 
@@ -133,6 +134,8 @@ the same topic 0.75, unrelated 0.45.
 | `TAVILY_API_KEY`, `SERPER_API_KEY`, `BRAVE_API_KEY` | web search (first configured provider wins; `SEARCH_PROVIDER_ORDER`) |
 | `QUALK_LLM_URL`, `QUALK_LLM_KEY`, `QUALK_LLM_MODEL` | any OpenAI-compatible endpoint (default LM Studio, `gpt-oss-20b`) |
 | `MOTH_API_KEY` | run the walk circuit on Moth Atlas |
+| `MOTH_ATLAS_PROVIDER`, `MOTH_ATLAS_BACKEND`, `MOTH_ATLAS_TIMEOUT`, `MOTH_ATLAS_STRICT` | the Atlas emulator target (default `aer`), job timeout in seconds, and `1` to fail instead of falling back to local Qiskit |
+| `MOTH_QPU_PROVIDER`, `MOTH_QPU_BACKEND`, `MOTH_QPU_TIMEOUT` | the real-QPU target (needs the account feature `run_quantum`); never falls back to a simulator |
 | `QUALK_EMBED_MODEL` | embedding model (the affinity floor is calibrated per model: `python -m qualk.calibrate`) |
 | `QUALK_TOKEN` | optional web-app access token |
 

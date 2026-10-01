@@ -144,8 +144,8 @@ def create_app(runs_root: str = 'runs', token: Optional[str] = None, simulate: b
             return await S.check_search()
         if what == 'llm':
             return await S.check_llm()
-        if what == 'atlas':
-            return await run_in_threadpool(S.check_atlas)
+        if what in ('atlas', 'qpu'):
+            return await run_in_threadpool(S.check_atlas, what)
         if what == 'embed':
             return await run_in_threadpool(S.check_embed, backend.embedder)
         raise HTTPException(404, 'unknown test')

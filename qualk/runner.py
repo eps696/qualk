@@ -26,7 +26,7 @@ from typing import Any, Deque, Dict, List, Optional, Tuple
 from .settings import scrub
 
 WALKS = ('quantum', 'diffusion', 'classical')
-BACKENDS = ('qiskit', 'atlas')
+BACKENDS = ('qiskit', 'atlas', 'qpu')
 LIVE_PARAMS = ('walk', 'nodes', 'steps', 'time', 'shots', 'backend', 'explore', 'rounds', 'thread_aim', 'dedupe',
                'orphan_focus')
 WALK_PARAMS = ('walk', 'nodes', 'steps', 'time', 'shots', 'backend')

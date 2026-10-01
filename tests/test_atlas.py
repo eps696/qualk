@@ -227,6 +227,66 @@ class WalkOnAtlasTests(unittest.TestCase):
         self.assertIn(target, ('b', 'c', 'd'))
         self.assertIn('falling back to local Qiskit', out.getvalue())
 
+    def test_strict_mode_raises_instead_of_falling_back_to_local_qiskit(self):
+        graph = ring_graph()
+        server = FakeAtlas(fail_status=500)
+        try:
+            walk = self.walk(server)
+            walk.atlas_strict = True
+            with self.assertRaises(RuntimeError) as ctx:
+                walk.select(graph, 'a', graph.nodes, random.Random(1), exclude=('a',))
+        finally:
+            server.close()
+        self.assertIn('forbids the local fallback', str(ctx.exception))
+        self.assertEqual(server.submits, 1)
+
+    def test_from_env_reads_provider_timeout_and_strict(self):
+        from qualk.atlas import AtlasClient
+        from qualk.quantum_walk import QuantumProbeWalk
+        keys = ('MOTH_API_KEY', 'MOTH_ATLAS_PROVIDER', 'MOTH_ATLAS_TIMEOUT', 'MOTH_ATLAS_STRICT')
+        old = {k: os.environ.get(k) for k in keys}
+        try:
+            os.environ.update({'MOTH_API_KEY': KEY, 'MOTH_ATLAS_PROVIDER': 'some-qpu',
+                               'MOTH_ATLAS_TIMEOUT': '900', 'MOTH_ATLAS_STRICT': '1'})
+            client = AtlasClient.from_env()
+            self.assertEqual((client.provider, client.timeout_seconds, client.poll_seconds), ('some-qpu', 900., 3.))
+            self.assertTrue(QuantumProbeWalk(max_nodes=4, steps=2, atlas=client).atlas_strict)
+            os.environ['MOTH_ATLAS_TIMEOUT'] = 'not-a-number'
+            self.assertEqual(AtlasClient.from_env().timeout_seconds, 90.)
+            os.environ.pop('MOTH_ATLAS_STRICT')
+            self.assertFalse(QuantumProbeWalk(max_nodes=4, steps=2, atlas=client).atlas_strict)
+        finally:
+            for k, v in old.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+
+    def test_qpu_target_is_separate_strict_and_never_defaults_to_the_emulator(self):
+        from qualk.atlas import AtlasClient
+        from qualk.quantum_walk import QuantumProbeWalk
+        keys = ('MOTH_API_KEY', 'MOTH_ATLAS_PROVIDER', 'MOTH_QPU_PROVIDER', 'MOTH_QPU_BACKEND', 'MOTH_QPU_TIMEOUT')
+        old = {k: os.environ.get(k) for k in keys}
+        try:
+            for k in keys[1:]:
+                os.environ.pop(k, None)
+            os.environ['MOTH_API_KEY'] = KEY
+            self.assertEqual(AtlasClient.from_env('atlas').provider, 'aer')
+            self.assertIsNone(AtlasClient.from_env('qpu'), 'no provider configured: no QPU client')
+            with self.assertRaises(ValueError):
+                QuantumProbeWalk(max_nodes=4, steps=2, backend='qpu')
+            os.environ.update({'MOTH_QPU_PROVIDER': 'some-qpu', 'MOTH_QPU_BACKEND': 'dev-1'})
+            client = AtlasClient.from_env('qpu')
+            self.assertEqual((client.provider, client.backend_name, client.timeout_seconds), ('some-qpu', 'dev-1', 900.))
+            self.assertEqual(AtlasClient.from_env('atlas').provider, 'aer', 'the emulator target is unaffected')
+            walk = QuantumProbeWalk(max_nodes=4, steps=2, backend='qpu')
+            self.assertTrue(walk.atlas_strict)
+            self.assertEqual(walk.atlas.provider, 'some-qpu')
+        finally:
+            for k, v in old.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+
     def test_repeated_failures_stop_calling_atlas_for_the_rest_of_the_run(self):
         graph = ring_graph()
         server = FakeAtlas(fail_status=500)

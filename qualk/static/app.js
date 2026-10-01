@@ -137,7 +137,7 @@
   function render() {
     $('sim-banner').hidden = !S.simulate;
     $('btn-logout').hidden = !S.authRequired;
-    $('pills').innerHTML = ['search', 'llm', 'atlas'].map(k => {
+    $('pills').innerHTML = ['search', 'llm', 'atlas', 'qpu'].map(k => {
       const on = S.simulate || S.providers[k];
       return `<span class="pill ${on ? 'ok' : 'off'}" title="${S.simulate ? 'simulated' : (on ? 'configured' : 'not configured')}">${k}</span>`;
     }).join('');
@@ -267,7 +267,7 @@
       Object.entries(live.cfg).forEach(([k, v]) => { const f = form.elements[k]; if (f) f.value = v; });
     }
     form.elements.walk.disabled = live.role === 'ctl' || (partnerId(id) != null);
-    [...form.elements.backend.options].forEach(o => o.disabled = o.value === 'atlas' && !S.providers.atlas && !S.simulate);
+    [...form.elements.backend.options].forEach(o => o.disabled = (o.value === 'atlas' || o.value === 'qpu') && !S.providers[o.value] && !S.simulate);
     const m = cur();
     if (m) {
       const dl = $('pin-list'); const names = m.nodes.filter(n => n.kind !== 'thread').map(n => n.name);
@@ -351,7 +351,7 @@
   /* ---- dialogs -------------------------------------------------------------------------------------------- */
   function openNew() {
     const f = $('new-form');
-    [...f.elements.backend.options].forEach(o => o.disabled = o.value === 'atlas' && !S.providers.atlas && !S.simulate);
+    [...f.elements.backend.options].forEach(o => o.disabled = (o.value === 'atlas' || o.value === 'qpu') && !S.providers[o.value] && !S.simulate);
     f.elements.rounds.max = S.limits.max_rounds; $('new-error').hidden = true; $('dlg-new').showModal();
   }
   async function submitNew(ev) {

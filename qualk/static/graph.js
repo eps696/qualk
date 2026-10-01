@@ -409,7 +409,8 @@
     no_nonthread_nodes: 'the graph has no concepts yet',
   };
   const WALK_LABEL = m => /diffusion/.test(m || '') ? 'the diffusion control walk'
-    : /atlas/.test(m || '') ? 'the quantum walk (run on Moth Atlas)'
+    : /^atlas-aer/.test(m || '') ? 'the quantum walk (run on the Moth Atlas emulator)'
+    : /^atlas-/.test(m || '') ? 'the quantum walk (run on a real QPU via Moth Atlas: ' + m.slice(6) + ')'
     : /numpy/.test(m || '') ? 'the quantum walk (exact simulation, window too wide for a circuit)' : 'the quantum walk (Qiskit circuit)';
   const tipItem = (label, value, help) => `<span title="${esc(help)}">${label} <b>${value}</b></span>`;
   const step = (n, title, body) => `<section class="step"><h3><i>${n}</i>${title}</h3>${body}</section>`;

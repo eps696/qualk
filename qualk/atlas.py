@@ -4,7 +4,8 @@ circuit there instead of on a local simulator.
 Atlas is a catalogue of prebuilt engines, not a generic "run any circuit" service, and none of
 them is a quantum walk (checked against its OpenAPI spec, v0.41.0). The one engine that runs a
 caller's own circuit is `tomography-api-v2`: it takes OpenQASM 2, runs it on a provider (`aer`
-= Moth's emulator; real-QPU access needs the account feature `run_quantum`) and returns the
+= Moth's emulator; real-QPU access needs the account feature `run_quantum`; this engine has no `mode` switch, so the
+hardware is chosen with `provider_name` / `backend_name`; see `from_env('qpu')`) and returns the
 measurements in the X, Y and Z bases. The Z-basis counts of the whole register are exactly the
 shots of our one-excitation walk, so that is what is used. `graph-v1` (QuantumGraph) was tried
 as an alternative candidate selector and was worse: it designs a state from correlation
@@ -32,6 +33,13 @@ ENGINE = 'tomography-api-v2'
 _FAILED = {'failed', 'error', 'cancelled', 'canceled', 'terminated', 'timed_out'}
 
 
+def _seconds(text, default: float) -> float:
+    try:
+        return max(5., float(text)) if text else default
+    except ValueError:
+        return default
+
+
 class AtlasError(RuntimeError):
     """Any way the Atlas run can fail (network, HTTP error, failed or slow job, odd result)."""
 
@@ -54,14 +62,28 @@ class AtlasClient:
         return f'AtlasClient({self.base_url!r}, provider={self.provider!r}, backend={self.backend_name!r})'
 
     @classmethod
-    def from_env(cls) -> Optional['AtlasClient']:
-        """A client from MOTH_API_KEY (plus optional MOTH_API_URL, MOTH_ATLAS_PROVIDER), or None."""
+    def from_env(cls, target: str = 'atlas') -> Optional['AtlasClient']:
+        """A client from MOTH_API_KEY, or None. target 'atlas' is the Atlas emulator (MOTH_ATLAS_PROVIDER,
+        default aer, MOTH_ATLAS_BACKEND, MOTH_ATLAS_TIMEOUT); target 'qpu' is the real device
+        (MOTH_QPU_PROVIDER, which must be set, MOTH_QPU_BACKEND, MOTH_QPU_TIMEOUT)."""
         key = os.environ.get('MOTH_API_KEY')
         if not key:
             return None
+        if target == 'qpu':
+            # The real device: provider/backend names come from Moth for the account, so there is no
+            # default; a QPU queue takes minutes, hence the long timeout.
+            provider = os.environ.get('MOTH_QPU_PROVIDER')
+            if not provider:
+                return None
+            timeout = _seconds(os.environ.get('MOTH_QPU_TIMEOUT'), 900.)
+            return cls(key, base_url=os.environ.get('MOTH_API_URL') or DEFAULT_URL, provider=provider,
+                       backend_name=os.environ.get('MOTH_QPU_BACKEND') or 'automatic',
+                       timeout_seconds=timeout, poll_seconds=3.0)
+        timeout = _seconds(os.environ.get('MOTH_ATLAS_TIMEOUT'), 90.)
         return cls(key, base_url=os.environ.get('MOTH_API_URL') or DEFAULT_URL,
                    provider=os.environ.get('MOTH_ATLAS_PROVIDER') or 'aer',
-                   backend_name=os.environ.get('MOTH_ATLAS_BACKEND') or 'automatic')
+                   backend_name=os.environ.get('MOTH_ATLAS_BACKEND') or 'automatic',
+                   timeout_seconds=timeout, poll_seconds=1.0 if timeout <= 120 else 3.0)
 
     def _request(self, method: str, path: str, **kwargs):
         try:

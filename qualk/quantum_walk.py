@@ -12,6 +12,7 @@ the quantum option is constructed. See docs/quantum-probes.md.
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 
 import numpy as np
@@ -251,14 +252,14 @@ class QuantumProbeWalk(_GraphWalk):
     ATLAS_WIDE_BACKEND = 'matrix_product_state'
 
     def __init__(self, max_nodes=12, steps=5, time=2.0, shots=1024, trace_dir=None,
-                 backend='atlas', atlas=None):
+                 backend='atlas', atlas=None, atlas_strict=None):
         super().__init__(max_nodes=max_nodes, time=time)
         if not isinstance(steps, int) or not 1 <= steps <= 20:
             raise ValueError('quantum_steps must be an integer in [1, 20]')
         if not isinstance(shots, int) or not 1 <= shots <= 65536:
             raise ValueError('quantum_shots must be an integer in [1, 65536]')
-        if backend not in ('atlas', 'qiskit'):
-            raise ValueError('quantum_backend must be atlas or qiskit')
+        if backend not in ('atlas', 'qpu', 'qiskit'):
+            raise ValueError('quantum_backend must be atlas, qpu or qiskit')
         try:
             from qiskit import QuantumCircuit, qasm2, qasm3
             from qiskit.primitives import StatevectorSampler
@@ -276,16 +277,26 @@ class QuantumProbeWalk(_GraphWalk):
         # Atlas (Moth's platform) runs the circuit when it can; local Qiskit is the fallback and
         # is also what builds the circuit, so it stays a requirement either way.
         self.atlas = None
-        if backend == 'atlas':
+        if backend in ('atlas', 'qpu'):
             self.atlas = atlas
             if self.atlas is None:
                 from .atlas import AtlasClient
-                self.atlas = AtlasClient.from_env()
+                self.atlas = AtlasClient.from_env(backend)
+            if self.atlas is None and backend == 'qpu':
+                raise ValueError('quantum backend qpu needs MOTH_API_KEY and MOTH_QPU_PROVIDER (and usually '
+                                 'MOTH_QPU_BACKEND) to be set; the walk will not silently use a simulator')
             if self.atlas is None:
                 print('.. MOTH_API_KEY is not set: the quantum walk runs on local Qiskit '
                       '(set it, e.g. via env.bat, to use Moth Atlas)')
         self.atlas_failures = 0
         self.atlas_disabled = False
+        # Strict: an Atlas failure stops the run instead of quietly substituting local Qiskit (for a real
+        # QPU run, a silent simulator pick would be a lie). Default from MOTH_ATLAS_STRICT.
+        if atlas_strict is None and backend == 'qpu':
+            atlas_strict = True                  # the real device never falls back to a simulator
+        if atlas_strict is None:
+            atlas_strict = os.environ.get('MOTH_ATLAS_STRICT', '').strip().lower() in ('1', 'true', 'yes', 'on')
+        self.atlas_strict = bool(atlas_strict) and self.atlas is not None
 
     def _settings(self):
         return {'steps': self.steps, 'shots': self.shots}
@@ -321,6 +332,8 @@ class QuantumProbeWalk(_GraphWalk):
                 return choice, extra
             except AtlasError as exc:
                 failure = str(exc)
+                if self.atlas_strict:
+                    raise RuntimeError(f'Atlas run failed and MOTH_ATLAS_STRICT forbids the local fallback: {failure}') from exc
                 self.atlas_failures += 1
                 if self.atlas_failures >= self.ATLAS_MAX_FAILURES:
                     self.atlas_disabled = True
