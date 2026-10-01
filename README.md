@@ -56,9 +56,10 @@ a note instead). The run's actual path is the **exploration trail** on the graph
 its seed to its partner (colour: fresh, variation, recombination, question-aimed, pinned), switchable between the
 last 8 probes, all, or off; clicking an arrow jumps to its round.
 
-Circuits run on **local Qiskit**, the **Moth Atlas emulator** (`atlas`) or a **real QPU** via Atlas (`qpu`), chosen per run
-in the app (or `--quantum_backend`). On **Moth Atlas** (`MOTH_API_KEY`; falls back to local Qiskit per pick, and stops trying after 3
-failures, unless `MOTH_ATLAS_STRICT=1`) or locally. Windows over 16 qubits use an exact closed form (verified equal to the circuit) or Atlas's
+Circuits run on **local Qiskit**, the **Moth Atlas emulator** (`atlas`, provider `aer`) or a **real QPU** via Atlas (`qpu`),
+chosen per run in the app (or `--quantum_backend`). On Atlas (`MOTH_API_KEY`) a failed job falls back to local Qiskit
+for that pick and, after 3 failures in a row, for the rest of the run, unless `MOTH_ATLAS_STRICT=1`; a `qpu` run never
+falls back and stops instead. Windows over 16 qubits use an exact closed form (verified equal to the circuit) or Atlas's
 `matrix_product_state`. Every executed circuit is saved as OpenQASM (`quantum/round-XXXXX.qasm`). The round panel
 shows both distributions per qubit, the difference between them, circuit error, backend and Atlas job.
 
@@ -165,8 +166,10 @@ python -m qualk.report -i runs/demo            # quantum vs diffusion on a finis
 - **Real interference, no computational advantage.** One excitation on `n` qubits uses `n` of `2^n` states; the same
   probabilities are an `n x n` matrix exponential a laptop computes in microseconds (the exact reference here). What
   the circuit adds is a hardware-executable, measurement-based formulation of the choice. No speed-up is claimed.
-- Atlas here provides the `aer` emulator, so results are not from a QPU; on hardware, noise would push the result
-  toward the diffusion twin, itself a measurable comparison.
+- The `qpu` backend is implemented but **not yet run on hardware**: it needs the account feature `run_quantum` and the
+  provider/backend names from Moth (`MOTH_QPU_*`), and the Atlas engine used (`tomography-api-v2`) has no QPU mode switch.
+  All results so far are from the emulator or local simulation; on hardware, noise would push the result toward the
+  diffusion twin, itself a measurable comparison.
 - The walk differs from diffusion mostly where the relation graph has loops or hostile edges; early graphs are
   tree-like (`qualk.report` quantifies it).
 - Signal passes through web search and an LLM. Whether a page "answers" a question is the LLM's judgement, so read the
